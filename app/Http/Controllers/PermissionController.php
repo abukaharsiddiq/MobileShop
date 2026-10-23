@@ -1,0 +1,90 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Spatie\Permission\Models\Permission;
+use Brian2694\Toastr\Facades\Toastr;
+
+class PermissionController extends Controller
+{
+
+    private $heading;
+
+    public function __construct(){
+        $this->heading = "Permission";
+    }
+
+    public function index()
+    {
+        $name=$this->heading;
+        $title=$this->heading;
+        $permissions = Permission::latest()->get();
+        return view('back-end.permission.index', compact('permissions','name','title'));
+    }
+
+    // Create form
+    public function create()
+    {
+        $name=$this->heading;
+        $title=$this->heading;
+        return view('back-end.permission.create', compact('name','title'));
+    }
+
+    // Store permission
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|unique:permissions,name',
+            'group_name' => 'required|string'
+        ]);
+
+        Permission::create([
+            'name' => $request->name,
+            'group_name' => $request->group_name,
+            'guard_name' => 'web',
+        ]);
+
+        Toastr::success('Data Added Successfully', 'Success', ["positionClass" => "toast-top-right"]);
+        return redirect()->route('permission.index');
+    }
+
+    // Edit form
+    public function edit($id)
+    {
+        $name=$this->heading;
+        $title=$this->heading;
+        $permission = Permission::findOrFail($id);
+        return view('back-end.permission.edit', compact('permission','name','title'));
+    }
+
+    // Update permission
+    public function update(Request $request, $id)
+    {
+        $permission = Permission::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|unique:permissions,name,'.$id,
+            'group_name' => 'required|string'
+        ]);
+
+        $permission->update([
+            'name' => $request->name,
+            'group_name' => $request->group_name,
+            'guard_name' => 'web'
+        ]);
+
+        Toastr::success('Data Updated Successfully', 'Success', ["positionClass" => "toast-top-right"]);
+        return redirect()->route('permission.index');
+    }
+
+    // Delete permission
+    public function destroy($id)
+    {
+        $permission = Permission::findOrFail($id);
+        $permission->delete();
+
+        Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);
+        return redirect()->route('permission.index');
+    }
+}
