@@ -36,10 +36,6 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\InstallmentCollectionController;
 use App\Http\Controllers\AttendanceController;
 
-use App\Http\Controllers\TailorProductController;
-use App\Http\Controllers\TailorMeasurementController;
-use App\Http\Controllers\VirtualTryOnController;
-
 
 Route::get('/', function () {
     return view('auth.login');
@@ -73,7 +69,7 @@ Route::middleware(['auth'])->group(function () {
     });
 
 
-    /* Admin only: setting, branch, permission, salesman */
+    /* Admin only: setting, permission, branch, salesman */
     Route::middleware(['role:admin'])->group(function () {
 
         /* Setting Routes */
@@ -137,31 +133,6 @@ Route::middleware(['auth'])->group(function () {
             Route::delete('/delete/{id}', [EmployeeController::class, 'destroy'])->name('delete');
         });
         /* employee */
-
-        /* tailor product */
-        Route::prefix('tailor-product')->name('tailor.product.')->group(function () {
-            Route::get('/', [TailorProductController::class, 'index'])->name('index');
-            Route::get('/create', [TailorProductController::class, 'create'])->name('create');
-            Route::post('/store', [TailorProductController::class, 'store'])->name('store');
-            Route::get('/edit/{id}', [TailorProductController::class, 'edit'])->name('edit');
-            Route::put('/update/{id}', [TailorProductController::class, 'update'])->name('update');
-            Route::delete('/delete/{id}', [TailorProductController::class, 'delete'])->name('delete');
-            Route::post('/change/status/{id}', [TailorProductController::class, 'changeStatus'])->name('status.change');
-
-            Route::get('/{id}/try-on', [VirtualTryOnController::class, 'showTryOn'])->name('tryon');
-            Route::post('/process-try-on', [VirtualTryOnController::class, 'processTryOn'])->name('process.tryon');
-        });
-        /* tailor product */
-
-        Route::prefix('tailor-measurement')->name('tailor.measurement.')->group(function () {
-            Route::get('/', [TailorMeasurementController::class, 'index'])->name('index');
-            Route::get('/create', [TailorMeasurementController::class, 'create'])->name('create');
-            Route::post('/store', [TailorMeasurementController::class, 'store'])->name('store');
-            Route::get('/edit/{id}', [TailorMeasurementController::class, 'edit'])->name('edit');
-            Route::post('/update/{id}', [TailorMeasurementController::class, 'update'])->name('update');
-            Route::delete('/delete/{id}', [TailorMeasurementController::class, 'destroy'])->name('delete');
-            Route::get('/show/{id}', [TailorMeasurementController::class, 'show'])->name('show');
-        });
     });
 
 
