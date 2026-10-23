@@ -20,6 +20,7 @@ class User extends Authenticatable
     'address',
     'password',
     'role',
+    'branch_id',
     'status',
     'added_by',
     'updated_by',

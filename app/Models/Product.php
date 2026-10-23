@@ -53,4 +53,40 @@ class Product extends Model
 {
     return $this->hasMany(ProductImei::class, 'product_id', 'id');
 }
+
+    const TYPES = [
+        'smart_phone'       => 'Smart Phone',
+        'used_phone'        => 'Used Smart Phone',
+        'refurbished_phone' => 'Refurbished Smart Phone',
+        'button_phone'      => 'Button Phone',
+        'accessory'         => 'Accessories',
+    ];
+
+    // IMEI chara kena-becha hobe na
+    const IMEI_REQUIRED_TYPES = ['smart_phone', 'used_phone', 'refurbished_phone'];
+
+    // Bikri hoye jawa IMEI abar kena jay shudhu ei type e (purono phone hisebe)
+    const SECOND_HAND_TYPES = ['used_phone', 'refurbished_phone'];
+
+    public function typeLabel()
+    {
+        return self::TYPES[$this->type] ?? $this->type;
+    }
+
+    // Smart phone (notun, used, refurbished) kena-becha IMEI chara hobe na
+    public function requiresImei()
+    {
+        return in_array($this->type, self::IMEI_REQUIRED_TYPES);
+    }
+
+    public function isSecondHand()
+    {
+        return in_array($this->type, self::SECOND_HAND_TYPES);
+    }
+
+    // Accessories er IMEI thake na; button phone er IMEI oichchhik
+    public function allowsImei()
+    {
+        return $this->type !== 'accessory';
+    }
 }

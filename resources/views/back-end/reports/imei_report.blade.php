@@ -35,6 +35,16 @@
                             <td>{{ $result->product->product_name }}</td>
                         </tr>
                         <tr>
+                            <th>Variant (RAM / ROM / Color):</th>
+                            <td>
+                                @if($result->mainStock)
+                                    {{ implode(' / ', array_filter([$result->mainStock->ram->ram_name ?? null, $result->mainStock->rom->rom_name ?? null, $result->mainStock->color->color_name ?? null])) ?: 'N/A' }}
+                                @else
+                                    N/A
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
                             <th>IMEI Number:</th>
                             <td><span class="badge badge-primary">{{ $result->imei_no }}</span></td>
                         </tr>
@@ -42,10 +52,12 @@
                             <th>Current Status:</th>
                             <td>
                                 {{-- আপনার ডাটাবেসে যদি 'sold' স্ট্রিং হিসেবে থাকে তবে এটি কাজ করবে --}}
-                                @if($result->status == 0)
-                                    <span class="badge badge-danger">Sold Out</span>
+                                @if($result->status == \App\Models\ProductImei::STATUS_SOLD)
+                                    <span class="badge badge-danger">{{ $result->statusText() }}</span>
+                                @elseif($result->status == \App\Models\ProductImei::STATUS_RETURNED_TO_SUPPLIER)
+                                    <span class="badge badge-warning">{{ $result->statusText() }}</span>
                                 @else
-                                    <span class="badge badge-success">Available in Stock</span>
+                                    <span class="badge badge-success">{{ $result->statusText() }}</span>
                                 @endif
                             </td>
                         </tr>
@@ -76,6 +88,28 @@
                                 <td>{{ \Carbon\Carbon::parse($result->sale->sale_date)->format('d M, Y') }}</td>
                             </tr>
                         @endif
+                    </table>
+
+                    {{-- ei IMEI er puro itihash (kena, bikri, ferot, registration ...) --}}
+                    <table class="table table-bordered table-sm mt-3">
+                        <tr>
+                            <th colspan="6" class="text-center">IMEI History</th>
+                        </tr>
+                        <tr>
+                            <th>Date</th><th>Event</th><th>Reference</th><th>Branch</th><th>User</th><th>Note</th>
+                        </tr>
+                        @forelse($history as $move)
+                            <tr>
+                                <td>{{ $move->created_at?->format('d M, Y h:i A') }}</td>
+                                <td>{{ ucwords(str_replace('_', ' ', $move->event)) }}</td>
+                                <td>{{ $move->reference_type }} {{ $move->reference_no ?? ($move->reference_id ? '#' . $move->reference_id : '') }}</td>
+                                <td>{{ $move->branch->name ?? '-' }}</td>
+                                <td>{{ $move->user->name ?? '-' }}</td>
+                                <td>{{ $move->note }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="6" class="text-center text-muted">No history recorded yet (older records: run inventory:backfill-history).</td></tr>
+                        @endforelse
                     </table>
                 </div>
             </div>

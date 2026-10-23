@@ -83,37 +83,36 @@
 </div>
 
 <script>
+    // protiti row er nijer index, jate IMEI thik row er sathe jay (imeis[index][])
+    let returnRowIndex = 0;
+
     function addRow() {
+        let i = returnRowIndex++;
         let tr = `
         <tr>
             <td>
-                <select name="products[]" class="form-control product-select" onchange="updateRowData(this)" required>
+                <select name="stock_ids[${i}]" class="form-control product-select" onchange="updateRowData(this)" required>
                     <option value="">Select Product</option>
                     @foreach($stocks as $stock)
-                        <option value="{{ $stock->product_id }}" 
-                                data-ram="{{ $stock->ram_id }}" 
-                                data-rom="{{ $stock->rom_id }}" 
-                                data-color="{{ $stock->color_id }}"
+                        <option value="{{ $stock->id }}"
                                 data-price="{{ $stock->last_purchase_price }}"
                                 data-stock="{{ $stock->quantity }}">
-                            {{ $stock->product->product_name ?? '' }} 
-                            ({{ $stock->ram->ram_name ?? '' }} / {{ $stock->rom->rom_name ?? '' }} / {{ $stock->color->color_name ?? '' }})
-                            - Stock: {{ $stock->quantity }}
+                            {{ $stock->variantLabel() }} - Stock: {{ $stock->quantity }}
                         </option>
                     @endforeach
                 </select>
-                <input type="hidden" name="ram_ids[]" class="ram_id">
-                <input type="hidden" name="rom_ids[]" class="rom_id">
-                <input type="hidden" name="color_ids[]" class="color_id">
+                <div class="mt-2 imei-div" style="display:none">
+                    <select name="imeis[${i}][]" class="form-control imei-select" multiple onchange="updateQtyFromImei(this)"></select>
+                </div>
             </td>
             <td>
                 <input type="number" class="form-control stock-display" readonly>
             </td>
             <td>
-                <input type="number" name="qtys[]" class="form-control qty" oninput="validateStock(this)" min="1" required>
+                <input type="number" name="qtys[${i}]" class="form-control qty" oninput="validateStock(this)" min="1" required>
             </td>
             <td>
-                <input type="number" name="prices[]" class="form-control price" oninput="calculateRow(this)" step="0.01" required>
+                <input type="number" name="prices[${i}]" class="form-control price" oninput="calculateRow(this)" step="0.01" required>
             </td>
             <td>
                 <input type="number" class="form-control subtotal" readonly>
@@ -138,11 +137,33 @@
         tr.find('.stock-display').val(stock);
         tr.find('.price').val(price);
         tr.find('.qty').attr('max', stock); // HTML5 validation
-        tr.find('.ram_id').val(option.data('ram'));
-        tr.find('.rom_id').val(option.data('rom'));
-        tr.find('.color_id').val(option.data('color'));
-        
+
+        // ei variant er stock e thaka IMEI; IMEI thakle kon phone gulo ferot jacche seta bachai korte hobe
+        let imeiSelect = tr.find('.imei-select');
+        imeiSelect.empty();
+        tr.find('.imei-div').hide();
+        tr.find('.qty').attr('readonly', false);
+        if ($(select).val()) {
+            $.get("{{ url('purchase-return/available-imeis') }}/" + $(select).val(), function(data) {
+                if (data.length > 0) {
+                    $.each(data, function(i, item) {
+                        imeiSelect.append(`<option value="${item.id}">${item.imei_no}</option>`);
+                    });
+                    tr.find('.imei-div').show();
+                    tr.find('.qty').attr('readonly', true).val(0);
+                    imeiSelect.select2({ width: '100%', placeholder: "Select IMEI to return" });
+                    calculateRow(tr.find('.qty'));
+                }
+            });
+        }
+
         validateStock(tr.find('.qty'));
+    }
+
+    function updateQtyFromImei(select) {
+        let tr = $(select).closest('tr');
+        tr.find('.qty').val($(select).val() ? $(select).val().length : 0);
+        calculateRow(tr.find('.qty'));
     }
 
     function validateStock(input) {

@@ -663,6 +663,18 @@ img.menuImage{
 </script>
 
   {!! Toastr::message() !!}
+
+  {{-- controller er back()->with('error'|'success', ...) message dekhano --}}
+  @if (session('error'))
+    <script>toastr.error(@json(session('error')), 'Error', { timeOut: 10000 });</script>
+  @endif
+  @if (session('success'))
+    <script>toastr.success(@json(session('success')));</script>
+  @endif
+  @if ($errors->any())
+    <script>toastr.error(@json(implode('<br>', $errors->all())), 'Please fix the following', { timeOut: 10000 });</script>
+  @endif
+
     <script>
       // $("#zero_config").DataTable();
 

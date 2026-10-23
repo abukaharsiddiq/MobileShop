@@ -36,9 +36,9 @@
                                     <label class="font-weight-bold">Product Type</label>
                                     <select name="type" id="type" class="form-control" required>
                                         <option value="">Select Type</option>
-                                        <option value="smart_phone" {{ old('type','smart_phone')=='smart_phone'?'selected':'' }}>Smart Phone</option>
-                                        <option value="button_phone" {{ old('type')=='button_phone'?'selected':'' }}>Button Phone</option>
-                                        <option value="accessory" {{ old('type')=='accessory'?'selected':'' }}>Accessories</option>
+                                        @foreach(\App\Models\Product::TYPES as $typeKey => $typeLabel)
+                                            <option value="{{ $typeKey }}" {{ old('type','smart_phone')==$typeKey?'selected':'' }}>{{ $typeLabel }}</option>
+                                        @endforeach
                                     </select>
                                 </div>
 
@@ -211,7 +211,7 @@
 $(document).ready(function() {
     // ১. টাইপ অনুযায়ী ফিল্ড টগল
     function toggleFields(type){
-        if(type === 'smart_phone'){
+        if(['smart_phone', 'used_phone', 'refurbished_phone'].includes(type)){
             $('#phoneFields').show().find(':input').prop('disabled', false);
             $('#accessoryFields').hide();
         } else if(type === 'button_phone'){

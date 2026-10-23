@@ -34,7 +34,8 @@ class EmployeeController extends Controller
         $title =$this->heading;
         $name = $this->heading;
         $employeers = User::role('salesman')->get();
-        return view('back-end.sales.create', compact('title', 'name','employeers'));
+        $branches = Branch::where('status', 1)->orderBy('name')->get();
+        return view('back-end.sales.create', compact('title', 'name','employeers','branches'));
     }
 
      public function store(Request $request)
@@ -47,6 +48,7 @@ class EmployeeController extends Controller
             'phone'     => 'required|unique:users,phone',
             'address'     => 'required',
             'password'  => 'required|string|min:8|confirmed',
+            'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         $salesman = User::create([
@@ -54,6 +56,7 @@ class EmployeeController extends Controller
             'email'       => $request->email,
             'phone'       => $request->phone,
             'address'     => $request->address,
+            'branch_id'   => $request->branch_id,
             'password'    => Hash::make($request->password),
             'role'        => 'salesman',
             'status'      => 1,
@@ -71,8 +74,9 @@ class EmployeeController extends Controller
         $title=$this->heading;
         $name=$this->heading;
         $employee  = User::where('role', 'salesman')->findOrFail($id);
+        $branches = Branch::where('status', 1)->orderBy('name')->get();
 
-        return view('back-end.sales.edit', compact('employee','name','title'));
+        return view('back-end.sales.edit', compact('employee','name','title','branches'));
     }
 
     public function update(Request $request, $id)
@@ -84,6 +88,7 @@ class EmployeeController extends Controller
             'email'     => 'required|email|unique:users,email,'.$employee->id,
             'phone'     => 'required|unique:users,phone,'.$employee->id,
             'password'  => 'nullable|string|min:8|confirmed',
+            'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         $data = [
@@ -91,6 +96,7 @@ class EmployeeController extends Controller
             'email'     => $request->email,
             'phone'     => $request->phone,
             'address'     => $request->address,
+            'branch_id' => $request->branch_id,
             'status'    => $request->status,
             'updated_by'=>Auth::user()->id,
         ];

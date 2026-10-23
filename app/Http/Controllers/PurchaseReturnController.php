@@ -8,13 +8,19 @@ use App\Models\MainStock;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnDetail;
 use App\Models\SupplierLedger;
+use App\Models\ProductImei;
+use App\Services\ImeiService;
+use App\Services\StockService;
 use Brian2694\Toastr\Facades\Toastr;
 use DB;
 
 class PurchaseReturnController extends Controller
 {
     private $heading;
-    public function __construct(){
+    public function __construct(
+        private ImeiService $imeiService,
+        private StockService $stockService,
+    ){
         $this->heading = "Purchase Return";
     }
 
@@ -82,11 +88,16 @@ public function showByRef($ref_no)
 {
     // ১. ভ্যালিডেশন
     $request->validate([
-        'supplier_id' => 'required',
-        'return_no'   => 'required|unique:purchase_returns,return_no',
-        'return_date' => 'required|date',
-        'products'    => 'required|array',
-        'grand_total' => 'required|numeric',
+        'supplier_id'   => 'required|exists:suppliers,id',
+        'return_no'     => 'required|unique:purchase_returns,return_no',
+        'return_date'   => 'required|date',
+        'stock_ids'     => 'required|array|min:1',
+        'stock_ids.*'   => 'required|exists:main_stocks,id',
+        'qtys.*'        => 'required|integer|min:1',
+        'prices.*'      => 'required|numeric|min:0',
+        'imeis'         => 'nullable|array',
+        'imeis.*'       => 'nullable|array',
+        'grand_total'   => 'required|numeric',
     ]);
 
     DB::beginTransaction();
@@ -100,39 +111,60 @@ public function showByRef($ref_no)
             'note'         => $request->note,
         ]);
 
-        foreach ($request->products as $key => $product_id) {
-            $qty = $request->qtys[$key];
-            $ram_id = $request->ram_ids[$key];
-            $rom_id = $request->rom_ids[$key];
-            $color_id = $request->color_ids[$key];
+        foreach ($request->stock_ids as $key => $stock_id) {
+            $qty = (int) $request->qtys[$key];
 
-            // ৩. আইটেম ডিটেইলস সেভ
+            $stock = MainStock::with(['product', 'ram', 'rom', 'color'])->lockForUpdate()->findOrFail($stock_id);
+            $label = $stock->variantLabel();
+
+            if ($qty > $stock->quantity) {
+                throw new \Exception("Not enough stock for {$label}. Available: {$stock->quantity}, return: {$qty}.");
+            }
+
+            // ৩. IMEI: এই variant এর stock এ IMEI থাকলে কোন ফোনগুলো ফেরত যাচ্ছে সেটা বাছাই করতে হবে
+            $imeiIds = array_values(array_unique(array_filter((array) ($request->imeis[$key] ?? []))));
+            $hasImeiInStock = ProductImei::where('main_stock_id', $stock->id)
+                ->where('status', ProductImei::STATUS_IN_STOCK)
+                ->exists();
+
+            if (($stock->product->requiresImei() || $hasImeiInStock) && count($imeiIds) != $qty) {
+                throw new \Exception("{$label}: please select exactly {$qty} IMEI to return.");
+            }
+
+            if (count($imeiIds) > 0) {
+                $imeis = ProductImei::whereIn('id', $imeiIds)
+                    ->where('main_stock_id', $stock->id)
+                    ->where('status', ProductImei::STATUS_IN_STOCK)
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($imeis->count() != count($imeiIds)) {
+                    throw new \Exception("{$label}: one or more selected IMEI are not in stock.");
+                }
+
+                foreach ($imeis as $imei) {
+                    $imei->update(['status' => ProductImei::STATUS_RETURNED_TO_SUPPLIER]);
+                    $this->imeiService->record($imei, ImeiService::PURCHASE_RETURN, $purchaseReturn, 'Returned to supplier #' . $request->supplier_id);
+                }
+            }
+
+            // ৪. আইটেম ডিটেইলস সেভ
             PurchaseReturnDetail::create([
                 'purchase_return_id' => $purchaseReturn->id,
-                'product_id'         => $product_id,
-                'ram_id'             => $ram_id,
-                'rom_id'             => $rom_id,
-                'color_id'           => $color_id,
+                'product_id'         => $stock->product_id,
+                'ram_id'             => $stock->ram_id,
+                'rom_id'             => $stock->rom_id,
+                'color_id'           => $stock->color_id,
                 'quantity'           => $qty,
                 'purchase_price'     => $request->prices[$key],
                 'unit_total'         => $qty * $request->prices[$key],
             ]);
 
-            // ৪. মেইন স্টক আপডেট (ভেরিয়েন্ট অনুযায়ী কমানো)
-            $stock = MainStock::where('product_id', $product_id)
-                                ->where('ram_id', $ram_id)
-                                ->where('rom_id', $rom_id)
-                                ->where('color_id', $color_id)
-                                ->first();
-
-            if ($stock && $stock->quantity >= $qty) {
-                MainStock::where('id', $stock->id)->decrement('quantity', $qty);
-            } else {
-                throw new \Exception("Stock not available for one or more variants!");
-            }
+            // ৫. মেইন স্টক আপডেট (ভেরিয়েন্ট অনুযায়ী কমানো)
+            $this->stockService->move($stock, -$qty, StockService::PURCHASE_RETURN, $purchaseReturn);
         }
 
-        // ৫. সাপ্লায়ার লেজার ব্যালেন্স ক্যালকুলেশন এবং এন্ট্রি
+        // ৬. সাপ্লায়ার লেজার ব্যালেন্স ক্যালকুলেশন এবং এন্ট্রি
         $last_ledger = SupplierLedger::where('supplier_id', $request->supplier_id)
                         ->orderBy('id', 'desc')
                         ->first();
@@ -160,8 +192,18 @@ public function showByRef($ref_no)
 
     } catch (\Exception $e) {
         DB::rollBack();
-        return back()->with('error', errorMessage($e));
+        return back()->with('error', errorMessage($e))->withInput();
     }
+}
+
+// Return form: ei variant er stock e thaka IMEI
+public function availableImeis($stock_id)
+{
+    $imeis = ProductImei::where('main_stock_id', $stock_id)
+                ->where('status', ProductImei::STATUS_IN_STOCK)
+                ->get(['id', 'imei_no']);
+
+    return response()->json($imeis);
 }
 
 }

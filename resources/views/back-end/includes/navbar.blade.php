@@ -429,6 +429,15 @@
         @endphp
 
 
+        @if($isAdmin || auth()->user()->can('read stock adjustment'))
+            <li class="nav-item">
+                <a href="{{ route('stock-reconciliation.index') }}" class="nav-link {{ request()->routeIs('stock-reconciliation.*') ? 'active' : '' }}">
+                    <i class="fas fa-balance-scale nav-icon"></i>
+                    <p>Stock Reconciliation</p>
+                </a>
+            </li>
+        @endif
+
         @if($isAdmin || auth()->user()->hasAnyPermission(['read stock report', 'read supplier report', 'read sales report', 'read customer report', 'read expense report']))
             <li class="nav-item {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'active' : '' }}">

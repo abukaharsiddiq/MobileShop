@@ -87,6 +87,19 @@
                         </div>
 
 
+                        <!-- Branch -->
+                        <div class="form-group row">
+                            <label class="col-sm-3 col-form-label text-end">Branch</label>
+                            <div class="col-sm-9">
+                                <select name="branch_id" class="form-control">
+                                    <option value="">Default branch</option>
+                                    @foreach($branches as $branch)
+                                        <option value="{{ $branch->id }}" {{ old('branch_id', $employee->branch_id) == $branch->id ? 'selected' : '' }}>{{ $branch->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+
                         <!-- Status -->
                         <div class="form-group row">
                             <label class="col-sm-3 col-form-label text-end">Status</label>

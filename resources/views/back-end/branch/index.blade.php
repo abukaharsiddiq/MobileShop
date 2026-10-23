@@ -44,7 +44,8 @@
                           <th>Email</th>
                           <th>Phone</th>
                           <th>Address</th>
-                          <th>Added By</th>
+                          <th>Code</th>
+                          <th>Status</th>
                           <th>Action</th>
                         </tr>
                       </thead>
@@ -59,7 +60,17 @@
                           <td>{{ $info->email }}</td>
                           <td>{{ $info->phone }}</td>
                           <td>{{ $info->address }}</td>
-                          <td>{{ $info->creator->name??'' }}</td>
+                          <td>{{ $info->code }}</td>
+                          <td>
+                            @if($info->status)
+                              <span class="badge badge-success">Active</span>
+                            @else
+                              <span class="badge badge-secondary">Inactive</span>
+                            @endif
+                            @if($info->is_default)
+                              <span class="badge badge-primary">Default</span>
+                            @endif
+                          </td>
                           
                           <td>
 

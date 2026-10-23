@@ -53,6 +53,9 @@ class PermissionSeeder extends Seeder
             ['read supplier report', 'Report'],
             ['read customer report', 'Report'],
             ['read expense report', 'Report'],
+            ['read stock adjustment', 'Stock Reconciliation'],
+            ['create stock adjustment', 'Stock Reconciliation'],
+            ['approve stock adjustment', 'Stock Reconciliation'],
         ]);
 
         foreach ($permissions as [$name, $group]) {

@@ -35,6 +35,7 @@ use App\Http\Controllers\PermissionAssignToSalesmanController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\InstallmentCollectionController;
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\StockReconciliationController;
 
 
 Route::get('/', function () {
@@ -259,6 +260,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/', [PurchaseReturnController::class, 'index'])->name('index')->middleware('can:read purchase return');
         Route::get('/create', [PurchaseReturnController::class, 'create'])->name('create')->middleware('can:create purchase return');
         Route::post('/store', [PurchaseReturnController::class, 'store'])->name('store')->middleware('can:create purchase return');
+        Route::get('/available-imeis/{stock_id}', [PurchaseReturnController::class, 'availableImeis'])->name('available_imeis')->middleware('can:create purchase return');
         Route::get('/show/{id}', [PurchaseReturnController::class, 'show'])->name('show')->middleware('can:read purchase return');
         Route::get('/history', [PurchaseReturnController::class, 'history'])->name('history')->middleware('can:read purchase return');
         Route::get('/show-by-ref/{ref_no}', [PurchaseReturnController::class, 'showByRef'])->name('show_by_ref')->middleware('can:read purchase return');
@@ -310,7 +312,7 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('/find-by-imei/{imei}', [SaleController::class, 'findByImei'])->middleware('can:create sale');
 
-        Route::get('/get-available-imeis/{product_id}', [SaleController::class, 'getAvailableImeis'])->middleware('can:create sale');
+        Route::get('/get-available-imeis/{stock_id}',[SaleController::class, 'getAvailableImeis'])->middleware('can:create sale');
     });
     /* sale */
 
@@ -376,6 +378,18 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/invoice-wise-profit', [ReportController::class, 'invoiceWiseProfit'])->name('invoice.wise.profit')->middleware('can:read sales report');
     });
     /* reports */
+
+
+    /* stock reconciliation (IMEI registration / quantity correction, approval shoho) */
+    Route::prefix('stock-reconciliation')->name('stock-reconciliation.')->group(function () {
+        Route::get('/', [StockReconciliationController::class, 'index'])->name('index')->middleware('can:read stock adjustment');
+        Route::get('/create', [StockReconciliationController::class, 'create'])->name('create')->middleware('can:create stock adjustment');
+        Route::post('/store', [StockReconciliationController::class, 'store'])->name('store')->middleware('can:create stock adjustment');
+        Route::get('/show/{id}', [StockReconciliationController::class, 'show'])->name('show')->middleware('can:read stock adjustment');
+        Route::post('/approve/{id}', [StockReconciliationController::class, 'approve'])->name('approve')->middleware('can:approve stock adjustment');
+        Route::post('/reject/{id}', [StockReconciliationController::class, 'reject'])->name('reject')->middleware('can:approve stock adjustment');
+    });
+    /* stock reconciliation */
 
 
     /* installment */

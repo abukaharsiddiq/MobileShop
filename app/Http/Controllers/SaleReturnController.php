@@ -10,6 +10,8 @@ use App\Models\SaleReturnItem;
 use App\Models\ProductImei;
 use App\Models\MainStock;
 use App\Models\CustomerLedger;
+use App\Services\ImeiService;
+use App\Services\StockService;
 use DB;
 use Auth;
 
@@ -17,7 +19,10 @@ class SaleReturnController extends Controller
 {
 
     private $heading;
-    public function __construct()
+    public function __construct(
+        private ImeiService $imeiService,
+        private StockService $stockService,
+    )
     {
         $this->heading = 'Sale Return';
     }
@@ -115,7 +120,15 @@ public function store(Request $request)
         $imei_count = count($request->imei_nos);
         
         foreach ($request->imei_nos as $imei_no) {
-            $imeiData = ProductImei::where('imei_no', $imei_no)->first();
+            // shudhu ei invoice e bikri howa IMEI ferot neya jabe
+            $imeiData = ProductImei::where('imei_no', $imei_no)
+                ->where('sale_id', $sale->id)
+                ->where('status', ProductImei::STATUS_SOLD)
+                ->first();
+
+            if (!$imeiData) {
+                throw new \Exception("IMEI {$imei_no} was not sold in invoice {$sale->invoice_no}.");
+            }
             
             if ($imeiData) {
                 // রিটার্ন আইটেম রেকর্ড
@@ -135,21 +148,30 @@ public function store(Request $request)
                             'unit_total' => $detail->quantity * $detail->sale_price
                         ]);
 
-                        // মেইন স্টক বাড়ানো (ভ্যারিয়েন্ট অনুযায়ী)
-                        MainStock::where('product_id', $detail->product_id)
+                        // মেইন স্টক বাড়ানো (ভ্যারিয়েন্ট অনুযায়ী) + stock ledger
+                        $stock = MainStock::where('product_id', $detail->product_id)
                             ->where('ram_id', $detail->ram_id)
                             ->where('rom_id', $detail->rom_id)
                             ->where('color_id', $detail->color_id)
-                            ->increment('quantity', 1);
+                            ->lockForUpdate()
+                            ->first();
+                        if ($stock) {
+                            $this->stockService->move($stock, 1, StockService::SALE_RETURN, $saleReturn);
+                        }
                     }
                 }
 
-                // IMEI স্ট্যাটাস রিসেট
+                // ekoi IMEI onno kono record e active thakle (clone/bhul entry) ferot neya jabe na
+                $this->imeiService->assertNotActive([$imei_no]);
+
+                // IMEI স্ট্যাটাস রিসেট (purono sale er tottho imei_movements e thake)
                 $imeiData->update([
-                    'status'         => 1,
+                    'status'         => ProductImei::STATUS_IN_STOCK,
                     'sale_id'        => null,
                     'sale_detail_id' => null
                 ]);
+                $this->imeiService->record($imeiData, ImeiService::SALE_RETURN, $saleReturn,
+                    "Returned by customer from invoice {$sale->invoice_no}");
             }
         }
 

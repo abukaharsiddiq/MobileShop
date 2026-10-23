@@ -98,14 +98,21 @@ public function DeadStockReport(Request $request)
     $title = 'Search IMEI';
     $imei_no = $request->imei_no;
     $result = null;
+    $history = collect();
 
     if ($imei_no) {
-        $result = ProductImei::with(['product', 'sale.customer'])
+        $result = ProductImei::with(['product', 'sale.customer', 'mainStock.ram', 'mainStock.rom', 'mainStock.color'])
                     ->where('imei_no', $imei_no)
+                    ->latest('id')
                     ->first();
+
+        $history = \App\Models\ImeiMovement::with(['user', 'branch'])
+                    ->where('imei_no', $imei_no)
+                    ->orderBy('id')
+                    ->get();
     }
 
-    return view('back-end.reports.imei_report', compact('name', 'title', 'result', 'imei_no'));
+    return view('back-end.reports.imei_report', compact('name', 'title', 'result', 'imei_no', 'history'));
 }
 
 }

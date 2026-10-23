@@ -23,8 +23,10 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <!-- Migration e MySQL/MariaDB feature (generated column, JSON) ache, tai alada test database.
+             Kokhono asol database er naam diben na: test protibar database muche fele. -->
+        <env name="DB_CONNECTION" value="mysql" force="true"/>
+        <env name="DB_DATABASE" value="mobile_software_test" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

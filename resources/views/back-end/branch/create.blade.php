@@ -51,7 +51,7 @@
                     </div>
 
                      <div class="form-group row">
-                      <label for="branch_email" class="col-sm-3 text-end control-label col-form-label">Branch Email <span class="text-danger">*</span> </label>
+                      <label for="branch_email" class="col-sm-3 text-end control-label col-form-label">Branch Email</label>
                       <div class="col-sm-9">
                         <input
                           type="text" name="branch_email"
@@ -92,6 +92,26 @@
                         @error('branch_address')
                           <span class="text-danger">{{ $message }}</span>
                           @enderror
+                      </div>
+                    </div>
+
+                     <div class="form-group row">
+                      <label for="branch_code" class="col-sm-3 text-end control-label col-form-label">Branch Code</label>
+                      <div class="col-sm-9">
+                        <input type="text" name="branch_code" class="form-control" id="branch_code"
+                          value="{{ old('branch_code') }}" placeholder="e.g. MAIN, WH-1" />
+                        @error('branch_code')
+                          <span class="text-danger">{{ $message }}</span>
+                        @enderror
+                      </div>
+                    </div>
+
+                     <div class="form-group row">
+                      <div class="col-sm-9 offset-sm-3">
+                        <div class="form-check">
+                          <input class="form-check-input" type="checkbox" name="is_default" value="1" id="is_default" {{ old('is_default') ? 'checked' : '' }}>
+                          <label class="form-check-label" for="is_default">Default branch (used when a user has no branch)</label>
+                        </div>
                       </div>
                     </div>
 

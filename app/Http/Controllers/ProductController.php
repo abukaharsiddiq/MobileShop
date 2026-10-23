@@ -10,6 +10,8 @@ use App\Models\Ram;
 use App\Models\Rom;
 use App\Models\Product;
 use App\Models\MainStock;
+use App\Models\PurchaseDetail;
+use App\Models\SaleDetail;
 use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Support\Facades\DB;
@@ -49,7 +51,7 @@ class ProductController extends Controller
 
     // 1. Validation (RAM, ROM, Color nullable thakbe accessories er jonno)
     $request->validate([
-        'type'         => 'required|in:smart_phone,button_phone,accessory',
+        'type'         => 'required|in:' . implode(',', array_keys(Product::TYPES)),
         'product_name' => 'required|string|max:255',
         'model_number' => 'required|string|max:255',
         'category_id'  => 'required|exists:categories,id',
@@ -121,10 +123,20 @@ class ProductController extends Controller
 
 public function update(Request $request, $id)
 {
+    $request->validate([
+        'type' => 'required|in:' . implode(',', array_keys(Product::TYPES)),
+    ]);
+
     DB::beginTransaction();
 
     try {
         $product = Product::findOrFail($id);
+        $oldVariant = $product->only(['ram_id', 'rom_id', 'color_id']);
+
+        // Stock e IMEI shoho phone thakle product ke accessory banano jabe na
+        if ($request->type === 'accessory' && $product->imeis()->where('status', \App\Models\ProductImei::STATUS_IN_STOCK)->exists()) {
+            throw new \Exception('This product has devices with IMEI in stock and cannot be changed to an accessory.');
+        }
 
         // 1. Basic Product Info Update
         $product->update([
@@ -143,35 +155,47 @@ public function update(Request $request, $id)
         ]);
 
         // 3. Variant-wise Stock Update
-// Ekhane amra prothome puraton stock record-ti khujbo shudhu product_id diye
-$existingStock = MainStock::where('product_id', $product->id)->first();
+        // Stock er quantity, average purchase price ar IMEI kokhono overwrite hobe na.
+        MainStock::where('product_id', $product->id)->update(['category_id' => $request->category_id]);
 
-if ($existingStock) {
-    // Jodi age theke thake, tobe shob data update hobe (Variant shoho)
-    $existingStock->update([
-        'category_id'            => $request->category_id,
-        'ram_id'                 => $request->ram_id,
-        'rom_id'                 => $request->rom_id,
-        'color_id'               => $request->color_id,
-        'quantity'               => $existingStock->quantity,
-        'average_purchase_price' => $request->purchase_price,
-        'last_purchase_price'    => $request->purchase_price,
-        'sale_price'             => $request->sale_price,
-    ]);
-} else {
-    // Jodi ekdomi na thake, tobe notun create hobe
-    MainStock::create([
-        'product_id'             => $product->id,
-        'category_id'            => $request->category_id,
-        'ram_id'                 => $request->ram_id,
-        'rom_id'                 => $request->rom_id,
-        'color_id'               => $request->color_id,
-        'quantity'               => 0,
-        'average_purchase_price' => $request->purchase_price,
-        'last_purchase_price'    => $request->purchase_price,
-        'sale_price'             => $request->sale_price,
-    ]);
-}
+        $newVariant = [
+            'ram_id'   => $request->ram_id,
+            'rom_id'   => $request->rom_id,
+            'color_id' => $request->color_id,
+        ];
+
+        $stock = MainStock::where('product_id', $product->id)->where($newVariant)->first();
+
+        if ($stock) {
+            $stock->update(['sale_price' => $request->sale_price]);
+        } else {
+            // Purono variant er stock jodi kokhono use na hoye thake (qty 0, IMEI/kena-becha nei)
+            // tobe setai notun variant e bodle deya hoy; noile notun stock row toiri hoy ar purono ta thik thake
+            $oldStock = MainStock::where('product_id', $product->id)->where($oldVariant)->first();
+
+            $oldStockUnused = $oldStock
+                && $oldStock->quantity == 0
+                && !$oldStock->imeis()->exists()
+                && !PurchaseDetail::where('product_id', $product->id)->where($oldVariant)->exists()
+                && !SaleDetail::where('product_id', $product->id)->where($oldVariant)->exists();
+
+            if ($oldStockUnused) {
+                $oldStock->update($newVariant + [
+                    'average_purchase_price' => $request->purchase_price,
+                    'last_purchase_price'    => $request->purchase_price,
+                    'sale_price'             => $request->sale_price,
+                ]);
+            } else {
+                MainStock::create($newVariant + [
+                    'product_id'             => $product->id,
+                    'category_id'            => $request->category_id,
+                    'quantity'               => 0,
+                    'average_purchase_price' => $request->purchase_price,
+                    'last_purchase_price'    => $request->purchase_price,
+                    'sale_price'             => $request->sale_price,
+                ]);
+            }
+        }
 
         DB::commit();
         Toastr::success('Product and Stock Updated Successfully');

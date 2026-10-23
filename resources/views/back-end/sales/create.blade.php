@@ -87,11 +87,15 @@
                         </div>
 
                         <!-- Branch -->
-                        <div class="form-group row d-none">
-                            <label class="col-sm-3 col-form-label text-end">Branch *</label>
+                        <div class="form-group row">
+                            <label class="col-sm-3 col-form-label text-end">Branch</label>
                             <div class="col-sm-9">
-                                <input type="text" name="branch_id" class="form-control"
-                                    value="{{ old('branch_id',Auth::user()->id) }}">
+                                <select name="branch_id" class="form-control">
+                                    <option value="">Default branch</option>
+                                    @foreach($branches as $branch)
+                                        <option value="{{ $branch->id }}" {{ old('branch_id') == $branch->id ? 'selected' : '' }}>{{ $branch->name }}</option>
+                                    @endforeach
+                                </select>
                             </div>
                         </div>
 

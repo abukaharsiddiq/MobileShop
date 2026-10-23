@@ -28,7 +28,14 @@ class AppServiceProvider extends ServiceProvider
             return $user->role === 'admin' ? true : null;
         });
 
-        View::share('extrasetting',ExtraSetting::latest()->first()); 
-        View::share('setting',Setting::latest()->first());
+        // View render howar somoy load hoy (boot e na), jate migrate/artisan notun database e o chole
+        View::composer('*', function ($view) {
+            static $settings = null;
+            $settings ??= [
+                'extrasetting' => ExtraSetting::latest()->first(),
+                'setting'      => Setting::latest()->first(),
+            ];
+            $view->with($settings);
+        });
     }
 }

@@ -10,6 +10,8 @@ use App\Models\SaleDetail;
 use App\Models\MainStock;
 use App\Models\CustomerLedger;
 use App\Models\ProductImei;
+use App\Services\ImeiService;
+use App\Services\StockService;
 use DB;
 use Auth;
 use Brian2694\Toastr\Facades\Toastr;
@@ -17,7 +19,10 @@ use Brian2694\Toastr\Facades\Toastr;
 class SaleController extends Controller
 {
     private $heading;
-    public function __construct()
+    public function __construct(
+        private ImeiService $imeiService,
+        private StockService $stockService,
+    )
     {
         $this->heading = 'Sale';
     }
@@ -109,9 +114,15 @@ public function store(Request $request)
     // dd($request->all());
 
     $request->validate([
-        'customer_id' => 'required',
+        'customer_id' => 'required|exists:customers,id',
         'sale_date'   => 'required|date',
-        'products'    => 'required|array|min:1',
+        'stock_ids'   => 'required|array|min:1',
+        'stock_ids.*' => 'required|exists:main_stocks,id',
+        'qtys'        => 'required|array',
+        'qtys.*'      => 'required|integer|min:1',
+        'sale_prices.*' => 'nullable|numeric|min:0',
+        'imeis'       => 'nullable|array',
+        'imeis.*'     => 'nullable|array',
         'paid_amount' => 'required|numeric|min:0',
     ]);
 
@@ -157,42 +168,59 @@ public function store(Request $request)
         }
 
 
-        foreach ($request->products as $key => $product_id) {
-            $qty = $request->qtys[$key] ?? 0;
-            
+        foreach ($request->stock_ids as $key => $stock_id) {
+            $qty = (int) ($request->qtys[$key] ?? 0);
+
+            // Variant (RAM/ROM/Color) main_stock_id diye; lock kore jate eki somoy duijon eki stock bikri na kore
+            $stock = MainStock::with(['product', 'ram', 'rom', 'color'])->lockForUpdate()->findOrFail($stock_id);
+            $label = $stock->variantLabel();
+
+            if ($qty > $stock->quantity) {
+                throw new \Exception("Not enough stock for {$label}. Available: {$stock->quantity}, requested: {$qty}.");
+            }
+
+            $imeiIds = array_values(array_unique(array_filter((array) ($request->imeis[$key] ?? []))));
+
+            // smartphone: registered IMEI chara bikri hobe na; accessory: IMEI na
+            $this->imeiService->assertProductRules($stock->product, $qty, $imeiIds, $label);
+
+            $imeis = collect();
+            if (count($imeiIds) > 0) {
+                // IMEI ta registered, stock e ache ar ei variant er kina
+                $imeis = ProductImei::whereIn('id', $imeiIds)
+                    ->where('main_stock_id', $stock->id)
+                    ->where('status', ProductImei::STATUS_IN_STOCK)
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($imeis->count() != count($imeiIds)) {
+                    throw new \Exception("{$label}: one or more selected IMEI are already sold or do not belong to this product.");
+                }
+            }
+
             $item = new SaleDetail();
             $item->sale_id        = $sale->id;
-            $item->product_id     = $product_id;
-  
-            $stockInfo = MainStock::where('product_id', $product_id)->first();
-            
-            $item->ram_id         = $stockInfo->ram_id ?? null;
-            $item->rom_id         = $stockInfo->rom_id ?? null;
-            $item->color_id       = $stockInfo->color_id ?? null;
-            
+            $item->product_id     = $stock->product_id;
+            $item->ram_id         = $stock->ram_id;
+            $item->rom_id         = $stock->rom_id;
+            $item->color_id       = $stock->color_id;
             $item->quantity       = $qty;
-            $item->purchase_price = $stockInfo->average_purchase_price ?? 0;
+            $item->purchase_price = $stock->average_purchase_price ?? 0;
             $item->sale_price     = $request->sale_prices[$key] ?? 0;
             $item->item_discount  = $request->item_discounts[$key] ?? 0;
             $item->unit_total     = ($qty * $item->sale_price) - $item->item_discount;
             $item->save();
 
-          
-            if (isset($request->imeis[$key]) && is_array($request->imeis[$key])) {
-                foreach ($request->imeis[$key] as $imei_id) {
-                    DB::table('product_imeis')->where('id', $imei_id)->update([
-                        'status'  => 0,
-                        'sale_id' => $sale->id,
-                        'sale_detail_id' => $item->id,
-                    ]);
-                }
+            foreach ($imeis as $imei) {
+                $imei->update([
+                    'status'         => ProductImei::STATUS_SOLD,
+                    'sale_id'        => $sale->id,
+                    'sale_detail_id' => $item->id,
+                ]);
+                $this->imeiService->record($imei, ImeiService::SALE, $sale, 'Sold to customer #' . $sale->customer_id);
             }
 
-            MainStock::where('product_id', $product_id)
-                ->where('ram_id', $item->ram_id)
-                ->where('rom_id', $item->rom_id)
-                ->where('color_id', $item->color_id)
-                ->decrement('quantity', $qty);
+            $this->stockService->move($stock, -$qty, StockService::SALE, $sale);
         }
 
         $lastLedger = CustomerLedger::where('customer_id', $request->customer_id)
@@ -255,14 +283,13 @@ public function store(Request $request)
     });
 }
 
-public function getAvailableImeis($product_id)
+public function getAvailableImeis($stock_id)
 {
-
-    $imeis = DB::table('product_imeis')
-                ->where('product_id', $product_id)
-                ->where('status',1)
+    // shudhu ei variant er stock e thaka IMEI
+    $imeis = ProductImei::where('main_stock_id', $stock_id)
+                ->where('status', ProductImei::STATUS_IN_STOCK)
                 ->get(['id', 'imei_no']);
-    
+
     return response()->json($imeis);
 }
 
@@ -433,12 +460,15 @@ public function findByImei($imei_no)
     // আপনার স্টোক টেবিল থেকে IMEI টি খুঁজুন
     // নিশ্চিত করুন আপনার Imei মডেলে product_id আছে
     $imei = ProductImei::where('imei_no', $imei_no)
-                ->where('status', 1) // শুধু স্টোকে থাকা আইটেম
+                ->where('status', ProductImei::STATUS_IN_STOCK) // শুধু স্টোকে থাকা আইটেম
+                ->whereNotNull('main_stock_id')
+                ->latest('id')
                 ->first();
 
     if ($imei) {
         return response()->json([
             'success' => true,
+            'stock_id' => $imei->main_stock_id,
             'product_id' => $imei->product_id,
             'imei_id' => $imei->id,
             'price' => $imei->product->sale_price // যদি প্রাইস পাঠাতে চান

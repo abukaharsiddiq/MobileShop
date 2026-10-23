@@ -211,24 +211,28 @@
     });
 
     // --- Core Logic Functions ---
+    // protiti row er nijer index, jate IMEI thik row er sathe jay (imeis[index][])
+    let saleRowIndex = 0;
+
     function addRow() {
+        let i = saleRowIndex++;
         let tr = `<tr>
             <td>
-                <select name="products[]" class="form-control product-select" onchange="loadProductDetails(this)" required>
+                <select name="stock_ids[${i}]" class="form-control product-select" onchange="loadProductDetails(this)" required>
                     <option value="">Select Product</option>
                     @foreach($stocks as $stock)
-                        <option value="{{ $stock->product_id }}" data-price="{{ $stock->sale_price }}">
-                            {{ $stock->product->product_name }}
+                        <option value="{{ $stock->id }}" data-price="{{ $stock->sale_price ?? $stock->product->sale_price }}" data-type="{{ $stock->product->type }}" data-stock="{{ $stock->quantity }}">
+                            {{ $stock->variantLabel() }} - Stock: {{ $stock->quantity }}
                         </option>
                     @endforeach
                 </select>
                 <div class="mt-2 imei-div" style="display:none">
-                    <select name="imeis[][]" class="form-control imei-select" multiple onchange="updateQty(this)"></select>
+                    <select name="imeis[${i}][]" class="form-control imei-select" multiple onchange="updateQty(this)"></select>
                 </div>
             </td>
-            <td><input type="number" name="qtys[]" class="form-control qty text-center" value="1" oninput="calculateRow(this)"></td>
-            <td><input type="number" name="sale_prices[]" class="form-control sale_price text-right" oninput="calculateRow(this)"></td>
-            <td><input type="number" name="item_discounts[]" class="form-control item_discount text-right" oninput="calculateRow(this)" value="0"></td>
+            <td><input type="number" name="qtys[${i}]" class="form-control qty text-center" value="1" min="1" oninput="calculateRow(this)"></td>
+            <td><input type="number" name="sale_prices[${i}]" class="form-control sale_price text-right" oninput="calculateRow(this)"></td>
+            <td><input type="number" name="item_discounts[${i}]" class="form-control item_discount text-right" oninput="calculateRow(this)" value="0"></td>
             <td><input type="text" class="form-control unit_total text-right" readonly value="0"></td>
             <td class="text-center"><button type="button" class="btn btn-danger btn-sm" onclick="$(this).closest('tr').remove(); calculateTotal();"><i class="fa fa-trash"></i></button></td>
         </tr>`;
@@ -237,10 +241,11 @@
     }
 
     function loadProductDetails(select) {
-        let productId = $(select).val();
+        let stockId = $(select).val();
         let tr = $(select).closest('tr');
-        if (productId) {
-            $.get('/sale/get-available-imeis/' + productId, function(data) {
+        tr.find('.qty').attr('max', $(select).find(':selected').data('stock'));
+        if (stockId) {
+            $.get('/sale/get-available-imeis/' + stockId, function(data) {
                 let imeiSelect = tr.find('.imei-select');
                 imeiSelect.empty();
                 if (data.length > 0) {
@@ -321,7 +326,7 @@
                     let lastRow = $('#saleBody tr:last');
                     if(lastRow.find('.product-select').val() != "") addRow();
                     lastRow = $('#saleBody tr:last');
-                    lastRow.find('.product-select').val(res.product_id).trigger('change');
+                    lastRow.find('.product-select').val(res.stock_id).trigger('change');
                     setTimeout(() => {
                         let imeiSelect = lastRow.find('.imei-select');
                         let vals = imeiSelect.val() || [];

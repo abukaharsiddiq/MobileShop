@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Sale;
 use App\Models\Expense;
+use App\Models\ProductImei;
 use DB;
 
 class AdminController extends Controller
@@ -65,32 +66,32 @@ class AdminController extends Controller
 {
     $imei = $request->imei;
 
-    $item = DB::table('product_imeis')
-        ->join('products', 'product_imeis.product_id', '=', 'products.id')
-        ->leftJoin('main_stocks', 'product_imeis.product_id', '=', 'main_stocks.product_id')
-        ->leftJoin('rams', 'main_stocks.ram_id', '=', 'rams.id')
-        ->leftJoin('roms', 'main_stocks.rom_id', '=', 'roms.id')
-        ->leftJoin('colors', 'main_stocks.color_id', '=', 'colors.id')
-        ->where('product_imeis.imei_no', $imei)
-        ->select(
-            'products.product_name', 
-            'rams.ram_name', 
-            'roms.rom_name', 
-            'colors.color_name', 
-            'product_imeis.status', 
-            'product_imeis.sale_id'
-        )
+    // Ekta IMEI ekadhikbar thakte pare (bikri howa phone abar kena hole); shesh record tai ekhonkar obostha
+    $item = ProductImei::with(['product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'sale'])
+        ->where('imei_no', $imei)
+        ->latest('id')
         ->first();
 
     if ($item) {
+        $stock = $item->mainStock;
+        $variant = $stock
+            ? implode(' / ', array_filter([$stock->ram->ram_name ?? null, $stock->rom->rom_name ?? null, $stock->color->color_name ?? null]))
+            : 'N/A';
+
+        $saleInfo = match ((int) $item->status) {
+            ProductImei::STATUS_SOLD => 'Invoice: ' . ($item->sale->invoice_no ?? ('#' . $item->sale_id)),
+            ProductImei::STATUS_RETURNED_TO_SUPPLIER => 'Returned to supplier',
+            default => 'Ready to Sell',
+        };
+
         return response()->json([
             'status' => 'success',
             'data' => [
-                'product_name' => $item->product_name,
-                'variant'      => $item->ram_name . '/' . $item->rom_name . '/' . $item->color_name,
-                'current_status' => $item->status, // 0 or 1
-                'status_text'  => $item->status == 1 ? 'Available in Stock' : 'Sold Out',
-                'sale_info'    => $item->status == 0 ? 'Sale ID: #' . $item->sale_id : 'Ready to Sell'
+                'product_name' => $item->product->product_name ?? 'N/A',
+                'variant'      => $variant,
+                'current_status' => (int) $item->status, // 0 sold, 1 in stock, 2 returned to supplier
+                'status_text'  => $item->statusText(),
+                'sale_info'    => $saleInfo,
             ]
         ]);
     }

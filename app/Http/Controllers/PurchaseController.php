@@ -11,6 +11,9 @@ use App\Models\ProductImei;
 use App\Models\MainStock;
 use App\Models\SupplierLedger;
 use App\Models\Setting;
+use App\Models\Branch;
+use App\Services\ImeiService;
+use App\Services\StockService;
 use Brian2694\Toastr\Facades\Toastr;
 use DB;
 
@@ -18,7 +21,10 @@ class PurchaseController extends Controller
 {
     private $heading;
 
-    public function __construct(){
+    public function __construct(
+        private ImeiService $imeiService,
+        private StockService $stockService,
+    ){
         $this->heading = "Purchase";
     }
 
@@ -115,7 +121,21 @@ public function store(Request $request)
 
         // ৪. Loop through Items (Stock Update)
         if ($request->items) {
+            $seenImeis = [];
+            $branchId = Branch::currentId();
+
             foreach ($request->items as $item) {
+                $product = Product::findOrFail($item['product_id']);
+                $qty = (int) $item['qty'];
+
+                // IMEI jachai (ImeiService e shob niyom)
+                $imeiList = ProductImei::parseList($item['imeis'] ?? '');
+                $this->imeiService->assertProductRules($product, $qty, $imeiList, $product->product_name);
+                $this->imeiService->assertValidNewImeis(array_merge($seenImeis, $imeiList));
+                $seenImeis = array_merge($seenImeis, $imeiList);
+                $this->imeiService->assertNotActive($imeiList);
+                $this->imeiService->assertRepurchaseAllowed($product, $imeiList);
+
                 // Save Purchase Details
                 $details = new PurchaseDetail();
                 $details->purchase_id    = $purchase->id;
@@ -129,26 +149,13 @@ public function store(Request $request)
                 $details->unit_total     = $item['unit_total'];
                 $details->save();
 
-
-                if (!empty($item['imeis'])) {
-                    $imeiList = explode(',', $item['imeis']); // কমা দিয়ে আলাদা করা
-                    foreach ($imeiList as $no) {
-                        ProductImei::create([
-                            'product_id' => $item['product_id'],
-                            'purchase_id'=> $purchase->id, // ট্র্যাক রাখার জন্য
-                            'imei_no'    => trim($no),
-                            'status'     => 1, // Available
-                        ]);
-                    }
-                }
-
                 // Update Main Stock
                 $stock = MainStock::where([
                     'product_id' => $item['product_id'],
                     'ram_id'     => $item['ram_id'] ?? null,
                     'rom_id'     => $item['rom_id'] ?? null,
                     'color_id'   => $item['color_id'] ?? null,
-                ])->first();
+                ])->lockForUpdate()->first();
 
                 if ($stock) {
                     $currentQty = $stock->quantity;
@@ -157,26 +164,41 @@ public function store(Request $request)
                     $newPrice = $item['price'];
 
                     $totalQty = $currentQty + $newQty;
-                    
+
                     $calculatedAverage = (($currentQty * $oldAvgPrice) + ($newQty * $newPrice)) / $totalQty;
                     $newAveragePrice = round($calculatedAverage);
 
-                    $stock->quantity = $totalQty;
                     $stock->last_purchase_price = $newPrice;
                     $stock->average_purchase_price = $newAveragePrice;
-                    $stock->save();
                 } else {
-                    $product = Product::find($item['product_id']);
-                    MainStock::create([
+                    $stock = MainStock::create([
                         'category_id'            => $product->category_id,
                         'product_id'             => $item['product_id'],
                         'ram_id'                 => $item['ram_id'] ?? null,
                         'rom_id'                 => $item['rom_id'] ?? null,
                         'color_id'               => $item['color_id'] ?? null,
-                        'quantity'               => $item['qty'],
+                        'quantity'               => 0,
                         'last_purchase_price'    => $item['price'],
                         'average_purchase_price' => round($item['price']), // এখানেও রাউন্ড ব্যবহার করা নিরাপদ
+                        'sale_price'             => $product->sale_price,
                     ]);
+                }
+
+                // quantity + stock ledger entry (price er poriborton o ekshathe save hoy)
+                $this->stockService->move($stock, $qty, StockService::PURCHASE, $purchase, null, $branchId);
+
+                // IMEI save (variant ar branch shoho) + itihash
+                foreach ($imeiList as $no) {
+                    $imei = ProductImei::create([
+                        'product_id'    => $item['product_id'],
+                        'main_stock_id' => $stock->id,
+                        'branch_id'     => $branchId,
+                        'purchase_id'   => $purchase->id, // ট্র্যাক রাখার জন্য
+                        'imei_no'       => $no,
+                        'status'        => ProductImei::STATUS_IN_STOCK,
+                    ]);
+                    $this->imeiService->record($imei, ImeiService::PURCHASE, $purchase,
+                        $product->isSecondHand() ? 'Bought as ' . $product->typeLabel() : null);
                 }
 
             }
@@ -250,35 +272,57 @@ private function generatePurchaseReference(){
     try {
         $purchase = Purchase::with('purchaseDetails')->findOrFail($id);
 
-        // ১. স্টক অ্যাডজাস্টমেন্ট (Stock Reverse)
+        // ১. এই purchase এর IMEI গুলো বিক্রি বা ফেরত হয়ে গেলে ডিলিট করা যাবে না
+        $usedImeis = ProductImei::where('purchase_id', $purchase->id)
+            ->where('status', '!=', ProductImei::STATUS_IN_STOCK)
+            ->pluck('imei_no');
+        if ($usedImeis->isNotEmpty()) {
+            throw new \Exception('Cannot delete! These IMEI from this purchase are already sold or returned: ' . $usedImeis->implode(', '));
+        }
+
+        // ২. স্টক অ্যাডজাস্টমেন্ট (Stock Reverse) + average purchase price আগের অবস্থায় ফেরানো
         foreach ($purchase->purchaseDetails as $item) {
             $stock = MainStock::where([
                 'product_id' => $item->product_id,
                 'ram_id'     => $item->ram_id,
                 'rom_id'     => $item->rom_id,
                 'color_id'   => $item->color_id,
-            ])->first();
+            ])->lockForUpdate()->first();
 
             if ($stock) {
-                // স্টক থেকে কেনা পরিমাণ বাদ দেওয়া
-                $stock->quantity -= $item->quantity;
-                
-                // যদি স্টক মাইনাস হয়ে যায় (অর্থাৎ বিক্রি হয়ে গেছে), তবে আপনি চাইলে এরর থ্রো করতে পারেন
-                if ($stock->quantity < 0) {
+                $remainingQty = $stock->quantity - $item->quantity;
+
+                // যদি স্টক মাইনাস হয়ে যায় (অর্থাৎ বিক্রি হয়ে গেছে)
+                if ($remainingQty < 0) {
                      throw new \Exception("Cannot delete! Some products from this purchase are already sold.");
                 }
-                $stock->save();
+
+                // (মোট মূল্য - এই purchase এর মূল্য) / বাকি পরিমাণ
+                if ($remainingQty > 0) {
+                    $remainingValue = ($stock->quantity * $stock->average_purchase_price) - ($item->quantity * $item->purchase_price);
+                    $stock->average_purchase_price = max(0, round($remainingValue / $remainingQty));
+                }
+
+                $this->stockService->move($stock, -$item->quantity, StockService::PURCHASE_DELETED, $purchase, 'Purchase deleted');
             }
         }
 
-        // ২. সাপ্লায়ার লেজার থেকে এন্ট্রি মোছা
+        // IMEI record muchhar age itihash e rakha
+        foreach (ProductImei::where('purchase_id', $purchase->id)->lockForUpdate()->get() as $imei) {
+            $this->imeiService->record($imei, ImeiService::PURCHASE_DELETED, $purchase, 'Purchase deleted');
+        }
+
+        // ৩. IMEI মোছা
+        ProductImei::where('purchase_id', $purchase->id)->delete();
+
+        // ৪. সাপ্লায়ার লেজার থেকে এন্ট্রি মোছা
         // এই ইনভয়েসের সাথে জড়িত সব ক্রেডিট/ডেবিট এন্ট্রি ডিলিট করা
         SupplierLedger::where('purchase_id', $id)->delete();
 
-        // ৩. লেজার ব্যালেন্স রিক্যালকুলেট করা (ঐ সাপ্লায়ারের জন্য)
+        // ৫. লেজার ব্যালেন্স রিক্যালকুলেট করা (ঐ সাপ্লায়ারের জন্য)
         $this->recalculateSupplierBalance($purchase->supplier_id);
 
-        // ৪. পারচেজ এবং ডিটেইলস ডিলিট করা
+        // ৬. পারচেজ এবং ডিটেইলস ডিলিট করা
         $purchase->purchaseDetails()->delete(); // রিলেশনশিপ থাকলে এটি কাজ করবে
         $purchase->delete();
 

@@ -40,5 +40,29 @@ class MainStock extends Model
     {
         return $this->belongsTo(Color::class);
     }
-    
+
+    public function imeis()
+    {
+        return $this->hasMany(ProductImei::class);
+    }
+
+    public function movements()
+    {
+        return $this->hasMany(StockMovement::class);
+    }
+
+    // "Galaxy A15 (6GB / 128GB / Black)"
+    public function variantLabel()
+    {
+        $parts = array_filter([
+            $this->ram->ram_name ?? null,
+            $this->rom->rom_name ?? null,
+            $this->color->color_name ?? null,
+        ]);
+
+        $name = $this->product->product_name ?? '';
+
+        return $parts ? $name . ' (' . implode(' / ', $parts) . ')' : $name;
+    }
+
 }
