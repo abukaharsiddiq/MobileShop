@@ -21,7 +21,7 @@ class StockReconciliationController extends Controller
         $this->heading = 'Stock Reconciliation';
     }
 
-    public function index(InventoryAuditService $audit)
+    public function index(Request $request, InventoryAuditService $audit)
     {
         $name = $this->heading;
         $title = $this->heading;
@@ -34,6 +34,7 @@ class StockReconciliationController extends Controller
             ->filter(fn ($s) => $s->quantity != $s->active_imei_count && ($s->product->requiresImei() || $s->active_imei_count > $s->quantity));
 
         $adjustments = StockAdjustment::with(['mainStock.product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'branch', 'requester', 'reviewer'])
+            ->when($request->user()->allowedBranchIds(), fn ($q, $ids) => $q->whereIn('branch_id', $ids))
             ->orderByRaw("status = 'pending' DESC")
             ->latest('id')
             ->paginate(20);
@@ -51,7 +52,10 @@ class StockReconciliationController extends Controller
         $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])
             ->withCount(['imeis as active_imei_count' => fn ($q) => $q->where('status', ProductImei::STATUS_IN_STOCK)])
             ->get();
-        $branches = Branch::where('status', 1)->orderBy('name')->get();
+        // branch e bandha user shudhu nijer branch er jonno request korte pare
+        $branches = Branch::where('status', 1)
+            ->when($request->user()->allowedBranchIds(), fn ($q, $ids) => $q->whereIn('id', $ids))
+            ->orderBy('name')->get();
         $selected = $request->stock_id;
 
         return view('back-end.stock-reconciliation.create', compact('name', 'title', 'stocks', 'branches', 'selected'));
@@ -74,6 +78,10 @@ class StockReconciliationController extends Controller
             'physically_verified.accepted' => 'Confirm that you have the physical devices and checked each IMEI.',
         ]);
 
+        if (!$request->user()->canAccessBranch((int) $request->branch_id)) {
+            return back()->with('error', 'You can only request stock corrections for your own branch.')->withInput();
+        }
+
         try {
             $adjustment = $this->adjustments->request($request->all(), $request->user());
         } catch (\Exception $e) {
@@ -84,13 +92,15 @@ class StockReconciliationController extends Controller
         return redirect()->route('stock-reconciliation.show', $adjustment->id);
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $name = $this->heading;
         $title = $this->heading;
 
         $adjustment = StockAdjustment::with(['mainStock.product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'branch', 'requester', 'reviewer'])
             ->findOrFail($id);
+        abort_unless($request->user()->canAccessBranch($adjustment->branch_id), 403);
+
         $logs = AuditLog::with('user')
             ->where('auditable_type', StockAdjustment::class)
             ->where('auditable_id', $adjustment->id)

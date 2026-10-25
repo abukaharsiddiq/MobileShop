@@ -16,19 +16,23 @@ class RoleMiddleware
             return redirect()->route('login');
         }
 
-        $userRole = Auth::user()->role;
+        $user = Auth::user();
 
-        if (!in_array($userRole, $roles)) {
+        if (!in_array($user->role, $roles, true)) {
             if ($request->expectsJson()) {
+                abort(403);
+            }
+
+            // nijer dashboard e pathano; kintu dashboard tai jodi ei page hoy (ba nei) tahole
+            // redirect loop na kore 403
+            $home = $user->homeRoute();
+            if ($request->routeIs($home) || !app('router')->has($home)) {
                 abort(403);
             }
 
             Toastr::error('You do not have permission to access this page.', 'Access Denied');
 
-            // nijer dashboard e pathano (admin -> admin dashboard, baki sobai -> sales dashboard)
-            return $userRole == 'admin'
-                ? redirect()->route('admin.dashboard')
-                : redirect()->route('sales.dashboard');
+            return redirect()->route($home);
         }
 
         return $next($request);

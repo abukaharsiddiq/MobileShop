@@ -87,12 +87,25 @@
                         </div>
 
 
+                        <!-- Role -->
+                        <div class="form-group row">
+                            <label class="col-sm-3 col-form-label text-end">Role *</label>
+                            <div class="col-sm-9">
+                                <select name="role" class="form-control">
+                                    @foreach($roles as $value => $label)
+                                        <option value="{{ $value }}" {{ old('role', $employee->role) == $value ? 'selected' : '' }}>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                <small class="text-muted">Changing the role does not change the user's permissions. Use Assign Permission &rarr; Load role defaults.</small>
+                            </div>
+                        </div>
+
                         <!-- Branch -->
                         <div class="form-group row">
                             <label class="col-sm-3 col-form-label text-end">Branch</label>
                             <div class="col-sm-9">
                                 <select name="branch_id" class="form-control">
-                                    <option value="">Default branch</option>
+                                    <option value="">Not assigned (all branches)</option>
                                     @foreach($branches as $branch)
                                         <option value="{{ $branch->id }}" {{ old('branch_id', $employee->branch_id) == $branch->id ? 'selected' : '' }}>{{ $branch->name }}</option>
                                     @endforeach
@@ -105,8 +118,8 @@
                             <label class="col-sm-3 col-form-label text-end">Status</label>
                             <div class="col-sm-9">
                                 <select name="status" class="form-control">
-                                    <option value="1" {{ $employee->status == 1 ? 'selected' : '' }}>Active</option>
-                                    <option value="0" {{ $employee->status == 0 ? 'selected' : '' }}>Inactive</option>
+                                    <option value="1" {{ old('status', $employee->status) == 1 ? 'selected' : '' }}>Active</option>
+                                    <option value="0" {{ old('status', $employee->status) == 0 ? 'selected' : '' }}>Inactive</option>
                                 </select>
                             </div>
                         </div>

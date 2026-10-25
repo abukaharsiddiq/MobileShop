@@ -103,11 +103,11 @@
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="font-weight-bold">Purchase Price</label>
-                                    <input type="number" name="purchase_price" class="form-control" value="{{ old('purchase_price') }}">
+                                    <input type="number" name="purchase_price" class="form-control" step="0.01" min="0" value="{{ old('purchase_price') }}" required>
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label class="font-weight-bold">Sale Price</label>
-                                    <input type="number" name="sale_price" class="form-control" value="{{ old('sale_price') }}">
+                                    <input type="number" name="sale_price" class="form-control" step="0.01" min="0" value="{{ old('sale_price') }}" required>
                                 </div>
                             </div>
                         </fieldset>
@@ -122,7 +122,7 @@
                                         <select name="ram_id" id="ram_id" class="form-control select2">
                                             <option value="">Select RAM</option>
                                             @foreach($rams as $ram)
-                                            <option value="{{ $ram->id }}">{{ $ram->ram_name }}</option>
+                                            <option value="{{ $ram->id }}" {{ old('ram_id') == $ram->id ? 'selected' : '' }}>{{ $ram->ram_name }}</option>
                                             @endforeach
                                         </select>
                                         <div class="input-group-append">
@@ -131,12 +131,12 @@
                                     </div>
                                 </div>
                                 <div class="col-md-4 mb-3">
-                                    <label class="font-weight-bold">ROM</label>
+                                    <label class="font-weight-bold">Storage (ROM)</label>
                                     <div class="input-group">
                                         <select name="rom_id" id="rom_id" class="form-control select2">
                                             <option value="">Select ROM</option>
                                             @foreach($roms as $rom)
-                                            <option value="{{ $rom->id }}">{{ $rom->rom_name }}</option>
+                                            <option value="{{ $rom->id }}" {{ old('rom_id') == $rom->id ? 'selected' : '' }}>{{ $rom->rom_name }}</option>
                                             @endforeach
                                         </select>
                                         <div class="input-group-append">
@@ -150,7 +150,7 @@
                                         <select name="color_id" id="color_id" class="form-control select2">
                                             <option value="">Select Color</option>
                                             @foreach($colors as $color)
-                                            <option value="{{ $color->id }}">{{ $color->color_name }}</option>
+                                            <option value="{{ $color->id }}" {{ old('color_id') == $color->id ? 'selected' : '' }}>{{ $color->color_name }}</option>
                                             @endforeach
                                         </select>
                                         <div class="input-group-append">
@@ -162,10 +162,29 @@
                            
                         </fieldset>
 
-                        {{-- ACCESSORY --}}
-                        <fieldset id="accessoryFields" class="border p-3 mb-3 bg-light" style="display:none;">
-                            <legend class="w-auto px-2 font-weight-bold text-success">Accessories</legend>
-                            <textarea name="accessory_note" class="form-control" placeholder="Note..."></textarea>
+                        {{-- STOCK RULES & OTHER --}}
+                        <fieldset class="border p-3 mb-3">
+                            <legend class="w-auto px-2 font-weight-bold text-primary">Stock Rules &amp; Other Details</legend>
+                            <div class="row">
+                                <div class="col-md-3 mb-3">
+                                    <label class="font-weight-bold">SKU</label>
+                                    <input type="text" name="sku" class="form-control text-uppercase" value="{{ old('sku') }}" maxlength="64" placeholder="Auto if empty">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="font-weight-bold">Barcode</label>
+                                    <input type="text" name="barcode" class="form-control" value="{{ old('barcode') }}" maxlength="64" placeholder="Scan or type (optional)">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="font-weight-bold">Low Stock Alert At</label>
+                                    <input type="number" name="low_stock_threshold" class="form-control" min="0" value="{{ old('low_stock_threshold') }}" placeholder="Default {{ config('inventory.low_stock_threshold') }}">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="font-weight-bold">Warranty (months)</label>
+                                    <input type="number" name="warranty_months" class="form-control" min="0" max="120" value="{{ old('warranty_months') }}">
+                                </div>
+                            </div>
+                            <small class="text-muted d-block mb-2">SKU and barcode belong to this first variant. Stock is not entered here: it comes from Purchase or Stock Reconciliation.</small>
+                            <textarea name="description" class="form-control" rows="2" maxlength="2000" placeholder="Description / note (e.g. compatible models for an accessory)">{{ old('description') }}</textarea>
                         </fieldset>
                     </div>
 

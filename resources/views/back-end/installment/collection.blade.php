@@ -61,7 +61,7 @@
                 <div class="modal-body">
                     <input type="hidden" name="installment_id" id="inst_id">
                     <div class="form-group">
-                        <label>Installment Amount</label>
+                        <label>Remaining on this installment</label>
                         <input type="text" id="inst_amount" class="form-control" readonly>
                     </div>
                     <div class="form-group">
@@ -99,9 +99,11 @@
                     let html = '';
                     if(data.length > 0) {
                         data.forEach(function(row) {
-                            let statusBadge = row.status == 'paid' ? 'badge-success' : 'badge-warning';
-                            let payBtn = row.status == 'pending' ? 
-                                `<button class="btn btn-sm btn-primary" onclick="openPaymentModal(${row.id}, ${row.amount})">Pay Now</button>` : 
+                            let statusBadge = row.status == 'paid' ? 'badge-success' : (row.status == 'partial' ? 'badge-info' : 'badge-warning');
+                            // baki = kistir taka - ja deya hoyeche (ansik payment shoho)
+                            let remaining = (parseFloat(row.amount) - parseFloat(row.paid_amount)).toFixed(2);
+                            let payBtn = row.status != 'paid' ?
+                                `<button class="btn btn-sm btn-primary" onclick="openPaymentModal(${row.id}, ${remaining})">Pay Now</button>` :
                                 `<span class="text-success"><i class="fa fa-check-circle"></i> Paid</span>`;
 
                             html += `<tr>

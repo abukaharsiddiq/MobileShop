@@ -17,6 +17,25 @@ class PermissionSeeder extends Seeder
         // purono banan bhul thik kora, jate age assign kora permission harai na
         Permission::where('name', 'udpate customer')->update(['name' => 'update customer']);
 
+        foreach (self::definitions() as [$name, $group]) {
+            Permission::firstOrCreate(
+                ['name' => $name, 'guard_name' => 'web'],
+                ['group_name' => $group]
+            );
+        }
+
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+    }
+
+    // Code e (route/controller) bebohar kora permission; egulo rename/delete kora jabe na
+    public static function names(): array
+    {
+        return array_column(self::definitions(), 0);
+    }
+
+    /** @return array<int, array{0: string, 1: string}> [name, group] */
+    public static function definitions(): array
+    {
         $crud = [
             'Product'          => 'product',
             'Category'         => 'category',
@@ -39,7 +58,7 @@ class PermissionSeeder extends Seeder
             }
         }
 
-        $permissions = array_merge($permissions, [
+        return array_merge($permissions, [
             ['create purchase return', 'Purchase Return'],
             ['read purchase return', 'Purchase Return'],
             ['create return', 'Sale Return'],
@@ -56,15 +75,9 @@ class PermissionSeeder extends Seeder
             ['read stock adjustment', 'Stock Reconciliation'],
             ['create stock adjustment', 'Stock Reconciliation'],
             ['approve stock adjustment', 'Stock Reconciliation'],
+            ['sell below cost', 'Sale'],
+            ['search imei', 'IMEI'],
+            ['access all branches', 'Branch'],
         ]);
-
-        foreach ($permissions as [$name, $group]) {
-            Permission::firstOrCreate(
-                ['name' => $name, 'guard_name' => 'web'],
-                ['group_name' => $group]
-            );
-        }
-
-        app()[PermissionRegistrar::class]->forgetCachedPermissions();
     }
 }

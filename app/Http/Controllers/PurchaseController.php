@@ -13,7 +13,11 @@ use App\Models\SupplierLedger;
 use App\Models\Setting;
 use App\Models\Branch;
 use App\Services\ImeiService;
+use App\Services\InvoiceNumberService;
+use App\Services\LedgerService;
 use App\Services\StockService;
+use App\Services\VariantService;
+use App\Models\PriceHistory;
 use Brian2694\Toastr\Facades\Toastr;
 use DB;
 
@@ -24,6 +28,9 @@ class PurchaseController extends Controller
     public function __construct(
         private ImeiService $imeiService,
         private StockService $stockService,
+        private InvoiceNumberService $invoiceNumbers,
+        private LedgerService $ledger,
+        private VariantService $variants,
     ){
         $this->heading = "Purchase";
     }
@@ -40,8 +47,8 @@ class PurchaseController extends Controller
     $name = $this->heading;
     $title = $this->heading;
     $suppliers = Supplier::latest()->get();
-    $products = Product::latest()->get();
-    $next_invoice_number =  $this->generatePurchaseReference();
+    $products = Product::where('status', 1)->latest()->get(); // inactive product kena jay na
+    $next_invoice_number = $this->invoiceNumbers->previewPurchase(); // shudhu dekhanor jonno
 
     return view('back-end.purchase.create', compact(
         'name', 
@@ -56,13 +63,19 @@ class PurchaseController extends Controller
 public function store(Request $request)
 {
     $request->validate([
-        'supplier_id'   => 'required',
-        'invoice_no'    => 'required|unique:purchases,invoice_no',
+        'supplier_id'   => 'required|exists:suppliers,id',
         'purchase_date' => 'required|date',
         'items'         => 'required|array|min:1',
-        'items.*.product_id' => 'required',
-        'items.*.qty'        => 'required|numeric|min:1',
-        'items.*.price'      => 'required|numeric',
+        'items.*.product_id'    => 'required|exists:products,id',
+        'items.*.main_stock_id' => 'nullable|integer',
+        'items.*.ram_id'        => 'nullable|integer|exists:rams,id',
+        'items.*.rom_id'        => 'nullable|integer|exists:roms,id',
+        'items.*.color_id'      => 'nullable|integer|exists:colors,id',
+        'items.*.qty'           => 'required|integer|min:1',
+        'items.*.price'         => 'required|numeric|min:0',
+        'items.*.unit_discount' => 'nullable|numeric|min:0',
+        'discount'      => 'nullable|numeric|min:0',
+        'paid_amount'   => 'nullable|numeric|min:0',
     ]);
 
     DB::beginTransaction();
@@ -70,54 +83,22 @@ public function store(Request $request)
     try {
         // ১. Save to Purchases Table
         $purchase = new Purchase();
+        // Invoice number save er somoy toiri hoy; total gulo item loop er pore server e hishab hoy
         $purchase->supplier_id    = $request->supplier_id;
-        $purchase->invoice_no     = $request->invoice_no;
+        $purchase->invoice_no     = $this->invoiceNumbers->nextPurchase();
         $purchase->purchase_date  = $request->purchase_date;
-        $purchase->subtotal       = $request->subtotal;
-        $purchase->discount       = $request->discount;
-        $purchase->grand_total    = $request->grand_total;
-        $purchase->payment_method = $request->payment_method;
+        $purchase->subtotal       = 0;
+        $purchase->discount       = 0;
+        $purchase->grand_total    = 0;
+        $purchase->payment_method = $request->payment_method ?: 'cash';
         $purchase->payment_account = $request->payment_account;
-        $purchase->paid_amount    = $request->paid_amount;
-        $purchase->due_amount     = $request->due_amount;
-        $purchase->payment_status = $request->payment_status;
+        $purchase->paid_amount    = 0;
+        $purchase->due_amount     = 0;
+        $purchase->payment_status = 'Due';
         $purchase->note           = $request->note;
         $purchase->save();
 
-    
-        $previous_balance = SupplierLedger::where('supplier_id', $request->supplier_id)
-                            ->latest()->value('balance') ?? 0;
-
-        $current_balance = $previous_balance + $request->grand_total;
-
-        $ledger = new SupplierLedger();
-        $ledger->supplier_id      = $request->supplier_id;
-        $ledger->date             = $request->purchase_date;
-        $ledger->transaction_type = 'Purchase';
-        $ledger->purchase_id      = $purchase->id;
-        $ledger->reference_no     = $request->invoice_no;
-        $ledger->credit           = $request->grand_total; // দেনা বাড়লো
-        $ledger->debit            = 0;
-        $ledger->balance          = $current_balance;
-        $ledger->note             = "Purchase Bill Generated";
-        $ledger->save();
-
-        // ৩. Supplier Ledger Entry (Payment - if any)
-        if ($request->paid_amount > 0) {
-            $current_balance -= $request->paid_amount; // পেমেন্ট করায় ব্যালেন্স কমবে
-
-            $paymentLedger = new SupplierLedger();
-            $paymentLedger->supplier_id      = $request->supplier_id;
-            $paymentLedger->date             = $request->purchase_date;
-            $paymentLedger->transaction_type = 'Payment';
-            $paymentLedger->purchase_id      = $purchase->id;
-            $paymentLedger->reference_no     = $request->invoice_no;
-            $paymentLedger->credit           = 0;
-            $paymentLedger->debit            = $request->paid_amount; // টাকা দেওয়ায় ডেবিট হলো
-            $paymentLedger->balance          = $current_balance;
-            $paymentLedger->note             = "Payment for Invoice #" . $request->invoice_no;
-            $paymentLedger->save();
-        }
+        $subtotal = 0;
 
         // ৪. Loop through Items (Stock Update)
         if ($request->items) {
@@ -128,6 +109,25 @@ public function store(Request $request)
                 $product = Product::findOrFail($item['product_id']);
                 $qty = (int) $item['qty'];
 
+                if (!$product->isActive()) {
+                    throw new \Exception("{$product->product_name} is inactive and cannot be purchased.");
+                }
+
+                // Variant: form theke bacha variant (main_stock_id), na thakle RAM/ROM/color (purono form) -
+                // oi variant na thakle notun variant (stock 0) toiri hoy, SKU shoho
+                if (!empty($item['main_stock_id'])) {
+                    $stock = MainStock::where('product_id', $product->id)->lockForUpdate()->find($item['main_stock_id']);
+                    if (!$stock) {
+                        throw new \Exception("{$product->product_name}: the selected variant does not belong to this product.");
+                    }
+                } else {
+                    $stock = $this->variants->findOrCreate($product,
+                        ($item['ram_id'] ?? null) ?: null, ($item['rom_id'] ?? null) ?: null, ($item['color_id'] ?? null) ?: null);
+                }
+                if (!$stock->status) {
+                    throw new \Exception("{$stock->variantLabel()} is inactive and cannot be purchased.");
+                }
+
                 // IMEI jachai (ImeiService e shob niyom)
                 $imeiList = ProductImei::parseList($item['imeis'] ?? '');
                 $this->imeiService->assertProductRules($product, $qty, $imeiList, $product->product_name);
@@ -136,53 +136,42 @@ public function store(Request $request)
                 $this->imeiService->assertNotActive($imeiList);
                 $this->imeiService->assertRepurchaseAllowed($product, $imeiList);
 
+                // line er hishab server e
+                $lineGross = round($qty * (float) $item['price'], 2);
+                $lineDiscount = round((float) ($item['unit_discount'] ?? 0), 2);
+                if ($lineDiscount > $lineGross) {
+                    throw new \Exception("{$product->product_name}: discount cannot be more than the line total.");
+                }
+                $lineTotal = round($lineGross - $lineDiscount, 2);
+                $subtotal += $lineTotal;
+
                 // Save Purchase Details
                 $details = new PurchaseDetail();
                 $details->purchase_id    = $purchase->id;
                 $details->product_id     = $item['product_id'];
-                $details->ram_id         = $item['ram_id'] ?? null;
-                $details->rom_id         = $item['rom_id'] ?? null;
-                $details->color_id       = $item['color_id'] ?? null;
-                $details->quantity       = $item['qty'];
+                // line er variant stock row theke (form er value na), jate stock ar line mele
+                $details->ram_id         = $stock->ram_id;
+                $details->rom_id         = $stock->rom_id;
+                $details->color_id       = $stock->color_id;
+                $details->quantity       = $qty;
                 $details->purchase_price = $item['price'];
-                $details->unit_discount  = $item['unit_discount'] ?? 0;
-                $details->unit_total     = $item['unit_total'];
+                $details->unit_discount  = $lineDiscount;
+                $details->unit_total     = $lineTotal;
                 $details->save();
 
-                // Update Main Stock
-                $stock = MainStock::where([
-                    'product_id' => $item['product_id'],
-                    'ram_id'     => $item['ram_id'] ?? null,
-                    'rom_id'     => $item['rom_id'] ?? null,
-                    'color_id'   => $item['color_id'] ?? null,
-                ])->lockForUpdate()->first();
+                // Weighted average kena dam (paisa porjonto; age purno takay round hoye profit bhul hoto)
+                $currentQty = $stock->quantity;
+                $oldAvgPrice = (float) ($stock->average_purchase_price ?? 0);
+                $oldLastPrice = $stock->last_purchase_price;
+                $newPrice = (float) $item['price'];
 
-                if ($stock) {
-                    $currentQty = $stock->quantity;
-                    $oldAvgPrice = $stock->average_purchase_price ?? 0;
-                    $newQty = $item['qty'];
-                    $newPrice = $item['price'];
+                $newAveragePrice = round((($currentQty * $oldAvgPrice) + ($qty * $newPrice)) / ($currentQty + $qty), 2);
 
-                    $totalQty = $currentQty + $newQty;
+                $stock->last_purchase_price = $newPrice;
+                $stock->average_purchase_price = $newAveragePrice;
 
-                    $calculatedAverage = (($currentQty * $oldAvgPrice) + ($newQty * $newPrice)) / $totalQty;
-                    $newAveragePrice = round($calculatedAverage);
-
-                    $stock->last_purchase_price = $newPrice;
-                    $stock->average_purchase_price = $newAveragePrice;
-                } else {
-                    $stock = MainStock::create([
-                        'category_id'            => $product->category_id,
-                        'product_id'             => $item['product_id'],
-                        'ram_id'                 => $item['ram_id'] ?? null,
-                        'rom_id'                 => $item['rom_id'] ?? null,
-                        'color_id'               => $item['color_id'] ?? null,
-                        'quantity'               => 0,
-                        'last_purchase_price'    => $item['price'],
-                        'average_purchase_price' => round($item['price']), // এখানেও রাউন্ড ব্যবহার করা নিরাপদ
-                        'sale_price'             => $product->sale_price,
-                    ]);
-                }
+                PriceHistory::record($product, $stock, PriceHistory::LAST_COST, $oldLastPrice, $newPrice, 'purchase', $purchase);
+                PriceHistory::record($product, $stock, PriceHistory::AVERAGE_COST, $oldAvgPrice, $newAveragePrice, 'purchase', $purchase);
 
                 // quantity + stock ledger entry (price er poriborton o ekshathe save hoy)
                 $this->stockService->move($stock, $qty, StockService::PURCHASE, $purchase, null, $branchId);
@@ -202,6 +191,48 @@ public function store(Request $request)
                 }
 
             }
+        }
+
+        // invoice er hishab server e (browser er total bishwas kora hoy na)
+        $subtotal = round($subtotal, 2);
+        $discount = round((float) ($request->discount ?? 0), 2);
+        if ($discount > $subtotal) {
+            throw new \Exception('Overall discount cannot be more than the subtotal.');
+        }
+        $grandTotal = round($subtotal - $discount, 2);
+        $paid = round((float) ($request->paid_amount ?? 0), 2);
+        if ($paid > $grandTotal) {
+            throw new \Exception('Paid amount (' . number_format($paid, 2) . ') cannot be more than the grand total (' . number_format($grandTotal, 2) . ').');
+        }
+
+        $purchase->subtotal       = $subtotal;
+        $purchase->discount       = $discount;
+        $purchase->grand_total    = $grandTotal;
+        $purchase->paid_amount    = $paid;
+        $purchase->due_amount     = round($grandTotal - $paid, 2);
+        $purchase->payment_status = $this->paymentStatus($purchase);
+        $purchase->save();
+
+        // Supplier ledger: bill (dena barlo), ar payment thakle
+        $this->ledger->supplierEntry([
+            'supplier_id'      => $purchase->supplier_id,
+            'date'             => $purchase->purchase_date,
+            'transaction_type' => 'Purchase',
+            'purchase_id'      => $purchase->id,
+            'reference_no'     => $purchase->invoice_no,
+            'credit'           => $grandTotal,
+            'note'             => 'Purchase Bill Generated',
+        ]);
+        if ($paid > 0) {
+            $this->ledger->supplierEntry([
+                'supplier_id'      => $purchase->supplier_id,
+                'date'             => $purchase->purchase_date,
+                'transaction_type' => 'Payment',
+                'purchase_id'      => $purchase->id,
+                'reference_no'     => $purchase->invoice_no,
+                'debit'            => $paid,
+                'note'             => 'Payment for Invoice #' . $purchase->invoice_no,
+            ]);
         }
 
         DB::commit();
@@ -244,27 +275,6 @@ public function show($id)
     return view('back-end.purchase.show', compact('purchase', 'name', 'title'));
 }
 
-private function generatePurchaseReference(){
-
-        $setting = Setting::first();
-        $prefix = $setting->purchase_invoice_prefix;
-        $startInvoiceNo = $setting->purchase_invoice_number;
-
-        $latestVoucher = Purchase::latest('id')->first();
-
-        if ($latestVoucher == null || $latestVoucher->invoice_no == null) {
-            $VoucherNumber = $prefix . '-' . $startInvoiceNo;
-        } else {
-            $latestVoucherNumber = $latestVoucher->invoice_no;
-            $numberPart = str_replace($prefix . '-', '', $latestVoucherNumber);
-            $newNumber = (int)$numberPart + 1;
-            $paddedNumber = str_pad($newNumber, strlen($startInvoiceNo), '0', STR_PAD_LEFT);
-            $VoucherNumber = $prefix . '-' . $paddedNumber;
-        }
-
-        return $VoucherNumber;
-   }
-
    public function delete($id)
 {
     DB::beginTransaction();
@@ -299,8 +309,10 @@ private function generatePurchaseReference(){
 
                 // (মোট মূল্য - এই purchase এর মূল্য) / বাকি পরিমাণ
                 if ($remainingQty > 0) {
+                    $oldAvg = $stock->average_purchase_price;
                     $remainingValue = ($stock->quantity * $stock->average_purchase_price) - ($item->quantity * $item->purchase_price);
-                    $stock->average_purchase_price = max(0, round($remainingValue / $remainingQty));
+                    $stock->average_purchase_price = max(0, round($remainingValue / $remainingQty, 2));
+                    PriceHistory::record($stock->product, $stock, PriceHistory::AVERAGE_COST, $oldAvg, $stock->average_purchase_price, 'purchase_deleted', $purchase);
                 }
 
                 $this->stockService->move($stock, -$item->quantity, StockService::PURCHASE_DELETED, $purchase, 'Purchase deleted');
@@ -320,7 +332,7 @@ private function generatePurchaseReference(){
         SupplierLedger::where('purchase_id', $id)->delete();
 
         // ৫. লেজার ব্যালেন্স রিক্যালকুলেট করা (ঐ সাপ্লায়ারের জন্য)
-        $this->recalculateSupplierBalance($purchase->supplier_id);
+        $this->ledger->recalculateSupplier($purchase->supplier_id);
 
         // ৬. পারচেজ এবং ডিটেইলস ডিলিট করা
         $purchase->purchaseDetails()->delete(); // রিলেশনশিপ থাকলে এটি কাজ করবে
@@ -338,59 +350,37 @@ private function generatePurchaseReference(){
     }
 }
 
-/**
- * লেজার ব্যালেন্স ঠিক করার জন্য একটি হেল্পার ফাংশন
- */
-private function recalculateSupplierBalance($supplierId)
-{
-    $ledgers = SupplierLedger::where('supplier_id', $supplierId)->orderBy('date', 'asc')->orderBy('id', 'asc')->get();
-    $runningBalance = 0;
-
-    foreach ($ledgers as $ledger) {
-        $runningBalance = $runningBalance + $ledger->credit - $ledger->debit;
-        $ledger->balance = $runningBalance;
-        $ledger->save();
-    }
-}
-
 public function updatePayment(Request $request)
 {
     $request->validate([
         'purchase_id' => 'required|exists:purchases,id',
-        'paid_amount' => 'required|numeric|min:1',
+        'paid_amount' => 'required|numeric|min:0.01',
         'payment_date'=> 'required|date',
     ]);
 
     DB::beginTransaction();
     try {
-        $purchase = Purchase::findOrFail($request->purchase_id);
-        
-        // ১. আপডেট পারচেজ টেবিল
-        $purchase->paid_amount += $request->paid_amount;
-        $purchase->due_amount -= $request->paid_amount;
-        
-        if ($purchase->due_amount <= 0) {
-            $purchase->payment_status = 'Paid';
-        } else {
-            $purchase->payment_status = 'Partial';
+        $purchase = Purchase::lockForUpdate()->findOrFail($request->purchase_id);
+        $amount = round((float) $request->paid_amount, 2);
+        $due = round((float) $purchase->due_amount, 2);
+
+        // due er beshi supplier ke deya jay na
+        if ($amount > $due) {
+            throw new \Exception("Invoice {$purchase->invoice_no} has only " . number_format($due, 2) . ' due. You cannot pay ' . number_format($amount, 2) . '.');
         }
+
+        $purchase->paid_amount = round($purchase->paid_amount + $amount, 2);
+        $purchase->due_amount = round($due - $amount, 2);
+        $purchase->payment_status = $this->paymentStatus($purchase);
         $purchase->save();
 
-        // ২. লেজার আপডেট করা
-        $previous_balance = SupplierLedger::where('supplier_id', $purchase->supplier_id)
-                            ->latest()->value('balance') ?? 0;
-
-        $new_balance = $previous_balance - $request->paid_amount;
-
-        SupplierLedger::create([
+        $this->ledger->supplierEntry([
             'supplier_id'      => $purchase->supplier_id,
             'date'             => $request->payment_date,
             'transaction_type' => 'Payment',
             'purchase_id'      => $purchase->id,
             'reference_no'     => $purchase->invoice_no,
-            'debit'            => $request->paid_amount,
-            'credit'           => 0,
-            'balance'          => $new_balance,
+            'debit'            => $amount,
             'note'             => $request->note ?? "Due payment for Invoice #" . $purchase->invoice_no,
         ]);
 
@@ -400,6 +390,15 @@ public function updatePayment(Request $request)
         DB::rollBack();
         return back()->with('error', errorMessage($e));
     }
+}
+
+private function paymentStatus(Purchase $purchase)
+{
+    if ($purchase->due_amount <= 0) {
+        return 'Paid';
+    }
+
+    return $purchase->paid_amount > 0 ? 'Partial' : 'Due';
 }
 
 public function printInvoice($id) {

@@ -93,7 +93,7 @@
                                 @php $grandTotalDue = 0; @endphp
                                 @forelse($customers as $key => $customer)
                                 @php 
-                                    $currentDue = $customer->ledgers->first()->balance ?? 0;
+                                    $currentDue = $customer->current_due;
                                     $grandTotalDue += $currentDue;
                                 @endphp
                                 <tr>

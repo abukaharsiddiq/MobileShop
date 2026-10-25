@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Http\Requests\Product\StoreProductRequest;
+use App\Http\Requests\Product\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\Brand;
 use App\Models\Color;
@@ -10,18 +12,19 @@ use App\Models\Ram;
 use App\Models\Rom;
 use App\Models\Product;
 use App\Models\MainStock;
-use App\Models\PurchaseDetail;
-use App\Models\SaleDetail;
-use Illuminate\Support\Facades\Auth;
+use App\Models\PriceHistory;
+use App\Services\ProductService;
 use Brian2694\Toastr\Facades\Toastr;
-use Illuminate\Support\Facades\DB;
 
 
+/**
+ * Product = model master. Stock protiti variant (main_stocks) e; variant er kaj ProductVariantController e.
+ */
 class ProductController extends Controller
 {
     private $heading;
 
-    public function __construct()
+    public function __construct(private ProductService $products)
     {
         $this->heading = 'Product';
     }
@@ -30,7 +33,10 @@ class ProductController extends Controller
     {
         $name=$this->heading;
         $title = $this->heading;
-         $products = Product::with(['category','brand','ram','rom','color'])->get();
+         $products = Product::with(['category','brand','ram','rom','color', 'variants.product'])
+            ->withCount('variants')
+            ->withSum('variants', 'quantity')
+            ->get();
         return view('back-end.product.product.index', compact('title', 'name','products'));
     }
 
@@ -46,66 +52,42 @@ class ProductController extends Controller
         return view('back-end.product.product.create', compact('title', 'name', 'categories', 'brands', 'colors', 'rams', 'roms'));
     }
 
-   public function store(Request $request)
+   public function store(StoreProductRequest $request)
 {
-
-    // 1. Validation (RAM, ROM, Color nullable thakbe accessories er jonno)
-    $request->validate([
-        'type'         => 'required|in:' . implode(',', array_keys(Product::TYPES)),
-        'product_name' => 'required|string|max:255',
-        'model_number' => 'required|string|max:255',
-        'category_id'  => 'required|exists:categories,id',
-        'brand_id'     => 'required|exists:brands,id',
-        'ram_id'       => 'nullable|exists:rams,id',
-        'rom_id'       => 'nullable|exists:roms,id',
-        'color_id'     => 'nullable|exists:colors,id',
-        'purchase_price' => 'required|numeric|min:0',
-    ]);
-
-    DB::beginTransaction();
-
     try {
-        // 2. Product Table Entry
-        $product = Product::create([
-            'type'             => $request->type,
-            'product_name'     => $request->product_name,
-            'model_number'     => $request->model_number,
-            'category_id'      => $request->category_id,
-            'brand_id'         => $request->brand_id,
-            'ram_id'           => $request->ram_id,
-            'rom_id'           => $request->rom_id,
-            'color_id'         => $request->color_id,
-            'purchase_price'   => $request->purchase_price,
-            'sale_price'       => $request->sale_price,
-            'unit'             => $request->unit,
-            'status'           => 1,
-        ]);
-
-            MainStock::create([
-                'category_id'            => $request->category_id,
-                'product_id'             => $product->id,
-                'ram_id'                 => $request->ram_id,
-                'rom_id'                 => $request->rom_id,
-                'color_id'               => $request->color_id,
-                'quantity'               => 0,
-                'average_purchase_price' => $request->purchase_price,
-                'last_purchase_price'    => $request->purchase_price,
-                'sale_price'             => $request->sale_price,
-            ]);
-     
-
-        DB::commit();
-        Toastr::success('Product and Opening Stock Added Successfully');
-        return redirect()->route('product.index');
-
+        // product + default variant (stock 0; stock ashe purchase/adjustment diye)
+        $product = $this->products->create($request->validated());
     } catch (\Exception $e) {
-        DB::rollBack();
-        // Technical error handle kora
-        Toastr::error(errorMessage($e), 'Error');
-        return back()->withInput();
+        return back()->with('error', errorMessage($e))->withInput();
     }
+
+    Toastr::success('Product Added Successfully');
+    return redirect()->route('product.show', $product->id);
 }
 
+    public function show(Request $request, $id)
+    {
+        $name = $this->heading;
+        $title = 'Product Details';
+        $product = Product::with(['category', 'brand'])->findOrFail($id);
+        $variants = MainStock::with(['ram', 'rom', 'color', 'product'])
+            ->withCount(['imeis as in_stock_imeis' => fn ($q) => $q->where('status', 1)])
+            ->where('product_id', $product->id)
+            ->orderBy('id')
+            ->get();
+
+        // kena dam/itihash shudhu jara kinte ba product bodlate pare
+        $canSeeCost = $request->user()->canAny(['create purchase', 'update product']);
+        $histories = $canSeeCost
+            ? PriceHistory::with(['user', 'mainStock.ram', 'mainStock.rom', 'mainStock.color'])->where('product_id', $product->id)->latest('id')->limit(50)->get()
+            : collect();
+
+        $rams = Ram::where('status', 1)->oldest()->get();
+        $roms = Rom::where('status', 1)->oldest()->get();
+        $colors = Color::where('status', 1)->oldest()->get();
+
+        return view('back-end.product.product.show', compact('name', 'title', 'product', 'variants', 'histories', 'canSeeCost', 'rams', 'roms', 'colors'));
+    }
 
     public function edit($id)
 {
@@ -121,123 +103,40 @@ class ProductController extends Controller
     return view('back-end.product.product.edit', compact('product','categories','brands','rams','roms','colors','name','title'));
 }
 
-public function update(Request $request, $id)
+public function update(UpdateProductRequest $request, $id)
 {
-    $request->validate([
-        'type' => 'required|in:' . implode(',', array_keys(Product::TYPES)),
-    ]);
-
-    DB::beginTransaction();
-
     try {
-        $product = Product::findOrFail($id);
-        $oldVariant = $product->only(['ram_id', 'rom_id', 'color_id']);
-
-        // Stock e IMEI shoho phone thakle product ke accessory banano jabe na
-        if ($request->type === 'accessory' && $product->imeis()->where('status', \App\Models\ProductImei::STATUS_IN_STOCK)->exists()) {
-            throw new \Exception('This product has devices with IMEI in stock and cannot be changed to an accessory.');
-        }
-
-        // 1. Basic Product Info Update
-        $product->update([
-            'type'             => $request->type,
-            'product_name'     => $request->product_name,
-            'model_number'     => $request->model_number,
-            'category_id'      => $request->category_id,
-            'brand_id'         => $request->brand_id,
-            'ram_id'           => $request->ram_id,
-            'rom_id'           => $request->rom_id,
-            'color_id'         => $request->color_id,
-            'purchase_price'   => $request->purchase_price,
-            'sale_price'       => $request->sale_price,
-            'unit'             => $request->unit,
-            'accessory_note'   => $request->accessory_note,
-        ]);
-
-        // 3. Variant-wise Stock Update
-        // Stock er quantity, average purchase price ar IMEI kokhono overwrite hobe na.
-        MainStock::where('product_id', $product->id)->update(['category_id' => $request->category_id]);
-
-        $newVariant = [
-            'ram_id'   => $request->ram_id,
-            'rom_id'   => $request->rom_id,
-            'color_id' => $request->color_id,
-        ];
-
-        $stock = MainStock::where('product_id', $product->id)->where($newVariant)->first();
-
-        if ($stock) {
-            $stock->update(['sale_price' => $request->sale_price]);
-        } else {
-            // Purono variant er stock jodi kokhono use na hoye thake (qty 0, IMEI/kena-becha nei)
-            // tobe setai notun variant e bodle deya hoy; noile notun stock row toiri hoy ar purono ta thik thake
-            $oldStock = MainStock::where('product_id', $product->id)->where($oldVariant)->first();
-
-            $oldStockUnused = $oldStock
-                && $oldStock->quantity == 0
-                && !$oldStock->imeis()->exists()
-                && !PurchaseDetail::where('product_id', $product->id)->where($oldVariant)->exists()
-                && !SaleDetail::where('product_id', $product->id)->where($oldVariant)->exists();
-
-            if ($oldStockUnused) {
-                $oldStock->update($newVariant + [
-                    'average_purchase_price' => $request->purchase_price,
-                    'last_purchase_price'    => $request->purchase_price,
-                    'sale_price'             => $request->sale_price,
-                ]);
-            } else {
-                MainStock::create($newVariant + [
-                    'product_id'             => $product->id,
-                    'category_id'            => $request->category_id,
-                    'quantity'               => 0,
-                    'average_purchase_price' => $request->purchase_price,
-                    'last_purchase_price'    => $request->purchase_price,
-                    'sale_price'             => $request->sale_price,
-                ]);
-            }
-        }
-
-        DB::commit();
-        Toastr::success('Product and Stock Updated Successfully');
-        return redirect()->route('product.index');
-
+        // master tottho; stock er quantity ar kena dam (average) kokhono ekhane bodlay na
+        $product = $this->products->update(Product::findOrFail($id), $request->validated());
     } catch (\Exception $e) {
-        DB::rollBack();
-        Toastr::error(errorMessage($e), 'Error');
-        return back();
+        return back()->with('error', errorMessage($e))->withInput();
     }
+
+    Toastr::success('Product Updated Successfully');
+    return redirect()->route('product.show', $product->id);
 }
 
 
 public function delete($id)
 {
-    DB::beginTransaction();
-
     try {
-
-        $product = Product::findOrFail($id);
-
-        MainStock::where('product_id', $product->id)->delete();
-
-        $product->delete();
-
-        DB::commit();
-
-        Toastr::success('Data Deleted Successfully');
-        return redirect()->route('product.index');
-
+        // kena-becha/stock er itihash thakle muchha jay na (inactive korte hobe)
+        $this->products->delete(Product::findOrFail($id));
     } catch (\Exception $e) {
-
-        DB::rollBack();
-        Toastr::error(errorMessage($e), 'Error');
-        return back();
+        return back()->with('error', errorMessage($e));
     }
+
+    Toastr::success('Data Deleted Successfully');
+    return redirect()->route('product.index');
 }
 
 
  public function changeStatus($id, Request $request) {
-        $model = Product::find($id);
-        return changeStatusHelper($model,$request);
+        $request->validate(['status' => 'required|in:0,1']);
+        $product = Product::findOrFail($id);
+        $this->products->setStatus($product, (bool) $request->status);
+
+        return response()->json(['success' => true, 'message' => 'Status updated successfully.']);
     }
 
 
@@ -256,5 +155,5 @@ public function delete($id)
     return view('back-end.product.product.print-barcode', compact('product'));
 }
 
-    
+
 }

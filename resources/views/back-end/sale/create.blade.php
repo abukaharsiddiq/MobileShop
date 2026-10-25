@@ -327,12 +327,15 @@
                     if(lastRow.find('.product-select').val() != "") addRow();
                     lastRow = $('#saleBody tr:last');
                     lastRow.find('.product-select').val(res.stock_id).trigger('change');
-                    setTimeout(() => {
-                        let imeiSelect = lastRow.find('.imei-select');
-                        let vals = imeiSelect.val() || [];
-                        vals.push(res.imei_id);
-                        imeiSelect.val(vals).trigger('change');
-                    }, 500);
+                    // barcode/SKU scan e IMEI thake na (accessory)
+                    if (res.imei_id) {
+                        setTimeout(() => {
+                            let imeiSelect = lastRow.find('.imei-select');
+                            let vals = imeiSelect.val() || [];
+                            vals.push(res.imei_id);
+                            imeiSelect.val(vals).trigger('change');
+                        }, 500);
+                    }
                 }
                 stopScanner();
             });

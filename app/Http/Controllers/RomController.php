@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Support\Facades\DB;
 use App\Models\Rom;
+use App\Services\CatalogUsage;
 
 class RomController extends Controller
 {
@@ -102,6 +103,13 @@ class RomController extends Controller
 
     public function delete($id){
         $ram = Rom::findOrFail($id);
+
+        // product/stock e use hole muchha jabe na (itihash bhange); inactive korte hobe
+        if (CatalogUsage::inUse('rom', $ram->id)) {
+            Toastr::error(CatalogUsage::message('storage (ROM)'), 'Error', ["positionClass" => "toast-top-right"]);
+            return redirect()->route('rom.index');
+        }
+
         $ram->delete();
 
         Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);

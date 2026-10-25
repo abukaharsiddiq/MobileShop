@@ -26,10 +26,27 @@ class UserFactory extends Factory
         return [
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
+            'phone' => fake()->unique()->numerify('017########'),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'role' => 'salesman',
+            'status' => 1,
             'remember_token' => Str::random(10),
         ];
+    }
+
+    // users.role er sathe Spatie role o (role na thakle toiri)
+    public function role(string $role): static
+    {
+        return $this->state(fn () => ['role' => $role])->afterCreating(function ($user) use ($role) {
+            \Spatie\Permission\Models\Role::firstOrCreate(['name' => $role, 'guard_name' => 'web']);
+            $user->assignRole($role);
+        });
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn () => ['status' => 0]);
     }
 
     /**

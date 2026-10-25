@@ -58,14 +58,19 @@ class ReportController extends Controller
     $start_date = $request->start_date ?? date('Y-m-01');
     $end_date = $request->end_date ?? date('Y-m-d');
 
+    // বিক্রয় মূল্য = invoice er grand_total (item discount, invoice discount ar return bad diye)
+    $totalSalesAmount = DB::table('sales')
+        ->whereBetween('sale_date', [$start_date, $end_date])
+        ->sum('grand_total');
+
     $salesData = DB::table('sale_details')
         ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
         ->whereBetween('sales.sale_date', [$start_date, $end_date])
         ->select(
-            DB::raw('SUM(sale_details.unit_total) as total_sales'), // বিক্রয় মূল্য
-            DB::raw('SUM(sale_details.quantity * sale_details.purchase_price) as total_purchase_cost') 
+            DB::raw('SUM(sale_details.quantity * sale_details.purchase_price) as total_purchase_cost')
         )
         ->first();
+    $salesData->total_sales = $totalSalesAmount;
 
     $totalExpenses = DB::table('expenses')
         ->whereBetween('expense_date', [$start_date, $end_date])
@@ -129,12 +134,25 @@ public function productWiseProfit(Request $request)
         $start_date = $request->start_date ? Carbon::parse($request->start_date)->format('Y-m-d') : date('Y-m-d');
         $end_date = $request->end_date ? Carbon::parse($request->end_date)->format('Y-m-d') : date('Y-m-d');
 
-        $reports = SaleDetail::with(['product', 'sale', 'ram', 'rom', 'color'])
+        $reports = SaleDetail::with(['product', 'sale.items', 'ram', 'rom', 'color'])
             ->whereHas('sale', function($q) use ($start_date, $end_date) {
                 $q->whereBetween('sale_date', [$start_date, $end_date]);
             })
+            ->where('quantity', '>', 0)
             ->latest()
             ->get();
+
+        // protiti line: quantity shoho, item discount ar invoice discount er bhag bad diye
+        foreach ($reports as $item) {
+            $lineTotal = $item->sale->items->sum('unit_total');
+            $factor = $lineTotal > 0 ? $item->sale->grand_total / $lineTotal : 1;
+
+            $item->gross_sale = $item->quantity * $item->sale_price;
+            $item->net_sale = round($item->unit_total * $factor, 2);
+            $item->total_discount = round($item->gross_sale - $item->net_sale, 2);
+            $item->total_cost = $item->quantity * $item->purchase_price;
+            $item->profit = round($item->net_sale - $item->total_cost, 2);
+        }
 
         return view('back-end.reports.product_wise_profit', compact('reports', 'name', 'title', 'start_date', 'end_date'));
     }

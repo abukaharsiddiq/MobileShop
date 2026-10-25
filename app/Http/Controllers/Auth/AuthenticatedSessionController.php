@@ -11,51 +11,33 @@ use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
-    
+
     public function create(): View
     {
         return view('auth.login');
     }
 
-    
-    // public function store(LoginRequest $request): RedirectResponse
-    // {
-    //     $request->authenticate();
-
-    //     $request->session()->regenerate();
-
-    //     return redirect()->intended(route('dashboard', absolute: false));
-    // }
-
-public function store(Request $request){
-    
-    $request->validate([
-        'email' => 'required|email',
-        'password' => 'required',
-    ]);
-
-    if (Auth::attempt($request->only('email', 'password'))) {
-
-        $request->session()->regenerate();
+    public function store(LoginRequest $request): RedirectResponse
+    {
+        // email + IP e 5 bar bhul hole kichukkhon bondho (LoginRequest e rate limit)
+        $request->authenticate();
 
         $user = Auth::user();
 
-        if ($user->status == 0) {
-            Auth::logout();
-            return back()->withErrors(['email' => 'Your account is inactive.']);
+        if (!$user->isActive()) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return back()->withErrors(['email' => 'Your account is inactive.'])->onlyInput('email');
         }
 
-        if ($user->role == 'admin') {
-            return redirect()->route('admin.dashboard');
-        }
+        $request->session()->regenerate();
 
-        return redirect()->route('sales.dashboard');
+        return redirect()->intended(route($user->homeRoute()));
     }
 
-    return back()->withErrors(['email' => 'Invalid credentials']);
-}
 
-   
     public function destroy(Request $request): RedirectResponse
     {
         Auth::guard('web')->logout();

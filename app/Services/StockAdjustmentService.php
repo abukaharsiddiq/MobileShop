@@ -207,6 +207,10 @@ class StockAdjustmentService
             throw new \Exception('You are not allowed to approve stock adjustments.');
         }
 
+        if (!$reviewer->canAccessBranch($adjustment->branch_id)) {
+            throw new \Exception('You can only review stock corrections of your own branch.');
+        }
+
         // nijer request nije approve shudhu admin korte pare (ek-maliker dokan); sob audit log e thake
         if ($adjustment->requested_by == $reviewer->id && $reviewer->role !== 'admin') {
             throw new \Exception('You cannot approve or reject your own adjustment request.');

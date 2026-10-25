@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Support\Facades\DB;
 use App\Models\Color;
+use App\Services\CatalogUsage;
 
 class ColorController extends Controller
 {
@@ -102,6 +103,13 @@ class ColorController extends Controller
 
     public function delete($id){
         $color = Color::findOrFail($id);
+
+        // product/stock e use hole muchha jabe na (itihash bhange); inactive korte hobe
+        if (CatalogUsage::inUse('color', $color->id)) {
+            Toastr::error(CatalogUsage::message('color'), 'Error', ["positionClass" => "toast-top-right"]);
+            return redirect()->route('color.index');
+        }
+
         $color->delete();
 
         Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);

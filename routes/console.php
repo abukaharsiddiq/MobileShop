@@ -33,7 +33,7 @@ Artisan::command('app:create-admin', function () {
         return 1;
     }
 
-    User::create([
+    $user = User::create([
         'name'     => $data['name'],
         'email'    => $data['email'],
         'phone'    => $data['phone'],
@@ -41,6 +41,9 @@ Artisan::command('app:create-admin', function () {
         'role'     => 'admin',
         'status'   => 1,
     ]);
+
+    Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+    $user->assignRole('admin');
 
     $this->info('Admin user created.');
 })->purpose('Create an admin user');
@@ -126,3 +129,86 @@ Artisan::command('inventory:backfill-history {--apply : Write the records (other
 
     $this->info('Done.');
 })->purpose('Backfill opening stock balances and IMEI history once after upgrading (dry-run by default)');
+
+// Customer/supplier ledger er running balance tarikh (date, id) onujayi abar hishab.
+// Default dry-run (shudhu koto line bhul dekhay); --apply dile thik kore.
+Artisan::command('ledger:recalculate {--apply : Fix the balances (otherwise dry-run)}', function (App\Services\LedgerService $ledger) {
+    $apply = (bool) $this->option('apply');
+    $total = 0;
+
+    Illuminate\Support\Facades\DB::transaction(function () use ($ledger, $apply, &$total) {
+        foreach (App\Models\Customer::orderBy('id')->get() as $customer) {
+            $changed = $ledger->recalculateCustomer($customer->id, $apply);
+            if ($changed) {
+                $this->line("    customer #{$customer->id} {$customer->name}: {$changed} line(s), balance now " . number_format(App\Services\LedgerService::customerBalance($customer->id), 2));
+            }
+            $total += $changed;
+        }
+
+        foreach (App\Models\Supplier::orderBy('id')->get() as $supplier) {
+            $changed = $ledger->recalculateSupplier($supplier->id, $apply);
+            if ($changed) {
+                $this->line("    supplier #{$supplier->id} {$supplier->name}: {$changed} line(s), balance now " . number_format(App\Services\LedgerService::supplierBalance($supplier->id), 2));
+            }
+            $total += $changed;
+        }
+    });
+
+    $this->info(($apply ? 'Fixed' : 'Dry-run: would fix') . " {$total} ledger line(s)." . ($apply || !$total ? '' : ' Run again with --apply (take a backup first).'));
+})->purpose('Recalculate customer and supplier ledger running balances by date (dry-run by default)');
+
+// Security upgrade er por ekbar: notun role/permission toiri ar users.role onujayi Spatie role.
+// Shudhu jog kore, kichu muchhe na. Default dry-run; --apply dile likhe.
+// --keep-branch-access: branch e bandha purono user der 'access all branches' (ager moto shob branch). Shudhu upgrade er din.
+Artisan::command('security:sync-roles {--apply : Write the changes (otherwise dry-run)} {--keep-branch-access : Give existing branch users access to all branches, as before the upgrade}', function (App\Services\RoleSyncService $sync) {
+    $plan = $sync->plan((bool) $this->option('keep-branch-access'));
+
+    $sections = [
+        'roles'         => 'Roles to create',
+        'permissions'   => 'Permissions to create',
+        'user_roles'    => 'Users to get their role',
+        'branch_access' => 'Users to keep all-branch access',
+    ];
+    foreach ($sections as $key => $title) {
+        $this->line(sprintf('%s: %d', $title, count($plan[$key])));
+        foreach ($plan[$key] as $row) {
+            $this->line('    - ' . $row);
+        }
+    }
+
+    if (App\Services\RoleSyncService::isEmpty($plan)) {
+        $this->info('Nothing to change.');
+        return 0;
+    }
+
+    if (!$this->option('apply')) {
+        $this->warn('Dry-run: nothing was changed. Take a database backup, then run again with --apply.');
+        return 0;
+    }
+
+    $sync->apply($plan);
+    $this->info('Done. Nothing was removed.');
+})->purpose('Create missing roles/permissions and give users their Spatie role (dry-run by default, adds only)');
+
+// Product & variant upgrade er por: SKU nei emon purono variant e SKU (BRAND-MODEL-RAM-ROM-COLOR).
+// Default dry-run; --apply dile likhe. Shudhu khali SKU bhore, kono SKU bodlay na.
+Artisan::command('products:backfill-sku {--apply : Write the SKUs (otherwise dry-run)}', function (App\Services\VariantService $variants) {
+    $stocks = App\Models\MainStock::with('product.brand')->whereNull('sku')->orderBy('id')->get();
+    $this->info(($this->option('apply') ? 'Applying' : 'Dry-run') . ': ' . $stocks->count() . ' variant(s) without SKU.');
+
+    $apply = (bool) $this->option('apply');
+    Illuminate\Support\Facades\DB::transaction(function () use ($stocks, $variants, $apply) {
+        foreach ($stocks as $stock) {
+            $sku = $variants->generateSku($stock->product, $stock->ram_id, $stock->rom_id, $stock->color_id, $stock->id);
+            $this->line("    variant #{$stock->id} {$stock->variantLabel()}: {$sku}");
+            if ($apply) {
+                // shudhu SKU column (quantity/dam chhoy na)
+                App\Models\MainStock::whereKey($stock->id)->update(['sku' => $sku]);
+            }
+        }
+    });
+
+    if (!$apply && $stocks->isNotEmpty()) {
+        $this->warn('Nothing was changed. Take a database backup, then run again with --apply.');
+    }
+})->purpose('Fill missing variant SKUs (dry-run by default; never changes an existing SKU)');

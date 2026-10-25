@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Sale;
 use App\Models\Customer;
 use App\Models\CustomerLedger;
+use App\Services\LedgerService;
+use App\Services\SalePaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
@@ -15,7 +17,10 @@ class CustomerController extends Controller
 
   private $heading;
 
-  public function __construct(){
+  public function __construct(
+     private LedgerService $ledger,
+     private SalePaymentService $payments,
+  ){
      $this->heading = "Customer";
   }
 
@@ -60,17 +65,15 @@ public function create()
             $opening_balance = $request->opening_balance ?? 0;
             
             if ($opening_balance > 0) {
-                $ledger = new CustomerLedger();
-                $ledger->customer_id      = $customer->id;
-                $ledger->date             = now()->format('Y-m-d');
-                $ledger->transaction_type = 'Opening Balance';
-                $ledger->sale_id          = null; // যেহেতু এটি সরাসরি সেল নয়
-                $ledger->reference_no     = 'OB-' . str_pad($customer->id, 5, '0', STR_PAD_LEFT);
-                $ledger->debit            = $opening_balance; // বকেয়া টাকা ডেবিট হিসেবে থাকে
-                $ledger->credit           = 0;
-                $ledger->balance          = $opening_balance;
-                $ledger->note             = 'Initial opening balance for ' . $customer->name;
-                $ledger->save();
+                $this->ledger->customerEntry([
+                    'customer_id'      => $customer->id,
+                    'date'             => now()->format('Y-m-d'),
+                    'transaction_type' => 'Opening Balance',
+                    'reference_no'     => 'OB-' . str_pad($customer->id, 5, '0', STR_PAD_LEFT),
+                    'debit'            => $opening_balance, // বকেয়া টাকা ডেবিট হিসেবে থাকে
+                    'credit'           => 0,
+                    'note'             => 'Initial opening balance for ' . $customer->name,
+                ]);
             }
 
             DB::commit();
@@ -170,15 +173,16 @@ public function dueReport()
     $name = 'Customer Due Report';
     $title = 'All Customers Due List';
 
-    $customers = Customer::whereHas('ledgers', function($query) {
-        $query->where('id', function($sub) {
-            $sub->selectRaw('max(id)')
-                ->from('customer_ledgers')
-                ->whereColumn('customer_id', 'customers.id');
-        })->where('balance', '>', 0);
-    })->with(['ledgers' => function($query) {
-        $query->latest('id');
-    }])->get();
+    // Bortoman due = shob debit - shob credit (shesh line er balance er upor nirbhor kore na)
+    $customers = Customer::withSum('ledgers as total_debit', 'debit')
+        ->withSum('ledgers as total_credit', 'credit')
+        ->with(['ledgers' => function($query) {
+            $query->orderByDesc('date')->orderByDesc('id');
+        }])
+        ->get()
+        ->each(fn ($c) => $c->current_due = round($c->total_debit - $c->total_credit, 2))
+        ->filter(fn ($c) => $c->current_due > 0)
+        ->values();
 
     return view('back-end.customer.due_report', compact('customers', 'name', 'title'));
 }
@@ -199,37 +203,33 @@ public function storeInvoicePayment(Request $request)
     // dd($request->all());
 
     $request->validate([
-        'customer_id' => 'required|exists:customers,id',
-        'date'        => 'required|date',
-        'pay_amounts' => 'required|array', // টেবিলের ইনপুটগুলো অ্যারে হিসেবে আসবে
+        'customer_id'   => 'required|exists:customers,id',
+        'date'          => 'required|date',
+        'pay_amounts'   => 'required|array', // টেবিলের ইনপুটগুলো অ্যারে হিসেবে আসবে
+        'pay_amounts.*' => 'nullable|numeric|min:0',
     ]);
 
     try {
         DB::beginTransaction();
 
+        $paidAny = false;
         foreach ($request->pay_amounts as $sale_id => $amount) {
             if ($amount > 0) {
-                $sale = Sale::findOrFail($sale_id);
+                // invoice ta ei customer er kina
+                $sale = Sale::where('customer_id', $request->customer_id)->find($sale_id);
+                if (!$sale) {
+                    throw new \Exception("Invoice #{$sale_id} does not belong to this customer.");
+                }
 
-                $sale->paid_amount += $amount;
-                $sale->due_amount -= $amount;
-                $sale->save();
-
-                $lastLedger = CustomerLedger::where('customer_id', $request->customer_id)->latest('id')->first();
-                $previousBalance = $lastLedger ? $lastLedger->balance : 0;
-
-                $ledger = new CustomerLedger();
-                $ledger->customer_id      = $request->customer_id;
-                $ledger->sale_id          = $sale->id;
-                $ledger->date             = $request->date;
-                $ledger->transaction_type = 'Received';
-                $ledger->reference_no     = $sale->invoice_no;
-                $ledger->debit            = 0;
-                $ledger->credit           = $amount;
-                $ledger->balance          = $previousBalance - $amount;
-                $ledger->note             = $request->note ?? 'Invoice payment: '.$sale->invoice_no;
-                $ledger->save();
+                // due er beshi neya jay na; kisti thakle kisti te bhag hoy; ledger e entry
+                $this->payments->receive($sale, (float) $amount, $request->date, $request->payment_method,
+                    $request->note ?: 'Invoice payment: ' . $sale->invoice_no);
+                $paidAny = true;
             }
+        }
+
+        if (!$paidAny) {
+            throw new \Exception('Enter an amount for at least one invoice.');
         }
 
         DB::commit();
@@ -297,17 +297,15 @@ public function paymentHistoryIndivisual($id)
             $opening_balance = $request->opening_balance ?? 0;
             
             if ($opening_balance > 0) {
-                $ledger = new CustomerLedger();
-                $ledger->customer_id      = $customer->id;
-                $ledger->date             = now()->format('Y-m-d');
-                $ledger->transaction_type = 'Opening Balance';
-                $ledger->sale_id          = null; // যেহেতু এটি সরাসরি সেল নয়
-                $ledger->reference_no     = 'OB-' . str_pad($customer->id, 5, '0', STR_PAD_LEFT);
-                $ledger->debit            = $opening_balance; // বকেয়া টাকা ডেবিট হিসেবে থাকে
-                $ledger->credit           = 0;
-                $ledger->balance          = $opening_balance;
-                $ledger->note             = 'Initial opening balance for ' . $customer->name;
-                $ledger->save();
+                $this->ledger->customerEntry([
+                    'customer_id'      => $customer->id,
+                    'date'             => now()->format('Y-m-d'),
+                    'transaction_type' => 'Opening Balance',
+                    'reference_no'     => 'OB-' . str_pad($customer->id, 5, '0', STR_PAD_LEFT),
+                    'debit'            => $opening_balance, // বকেয়া টাকা ডেবিট হিসেবে থাকে
+                    'credit'           => 0,
+                    'note'             => 'Initial opening balance for ' . $customer->name,
+                ]);
             }
 
             DB::commit();

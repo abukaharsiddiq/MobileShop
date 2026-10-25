@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Support\Facades\DB;
 use App\Models\Brand;
+use App\Services\CatalogUsage;
 
 class BrandController extends Controller
 {
@@ -102,6 +103,13 @@ class BrandController extends Controller
 
     public function delete($id){
         $category = Brand::findOrFail($id);
+
+        // product/stock e use hole muchha jabe na (itihash bhange); inactive korte hobe
+        if (CatalogUsage::inUse('brand', $category->id)) {
+            Toastr::error(CatalogUsage::message('brand'), 'Error', ["positionClass" => "toast-top-right"]);
+            return redirect()->route('brand.index');
+        }
+
         $category->delete();
 
         Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);

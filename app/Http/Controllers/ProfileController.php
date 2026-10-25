@@ -7,6 +7,7 @@ use Auth;
 use App\Models\User;
 use Hash;
 use Brian2694\Toastr\Facades\Toastr;
+use App\Services\UserSessions;
 
 class ProfileController extends Controller
 {
@@ -28,6 +29,11 @@ class ProfileController extends Controller
         $user = Auth::user();
         $user->password = Hash::make($request->new_password);
         $user->save();
+
+        // notun session id, ar onno device e thaka login bondho
+        $request->session()->regenerate();
+        UserSessions::terminate($user, $request->session()->getId());
+
          Toastr::success('Password Updated Successfully', 'Success', ["positionClass" => "toast-top-right"]);
 	   return redirect()->back();
     }

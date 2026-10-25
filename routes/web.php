@@ -13,6 +13,7 @@ use App\Http\Controllers\RamController;
 use App\Http\Controllers\RomController;
 use App\Http\Controllers\ColorController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductVariantController;
 use App\Http\Controllers\AttributeController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\SupplierController;
@@ -36,10 +37,14 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\InstallmentCollectionController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\StockReconciliationController;
+use App\Models\User;
 
 
+// login kora user ke login form na dekhiye nijer dashboard e
 Route::get('/', function () {
-    return view('auth.login');
+    return auth()->check()
+        ? redirect()->route(auth()->user()->homeRoute())
+        : redirect()->route('login');
 });
 
 require __DIR__.'/auth.php';
@@ -47,7 +52,9 @@ require __DIR__.'/auth.php';
 /*
 | Login chara kono page khola jabe na.
 | Admin sob kichu korte pare (AppServiceProvider e Gate::before).
-| Salesman/manager shudhu tar assign kora permission er route e jete parbe.
+| Baki role (manager, salesman, accountant, technician) shudhu tar assign kora permission er route e jete parbe.
+| Password bodlale ba inactive korle onno device er session UserSessions diye bondho hoy.
+| Notun route e obossoi role:/can:/permission: dite hobe (RouteAuthorizationTest eta check kore).
 */
 Route::middleware(['auth'])->group(function () {
 
@@ -55,13 +62,15 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/dashboard', [AdminController::class, 'index'])
             ->name('dashboard')
             ->middleware('role:admin');
-        Route::get('/dashboard/imei-search', [AdminController::class, 'imeiSearch'])->name('dashboard.imei-search');
+        Route::get('/dashboard/imei-search', [AdminController::class, 'imeiSearch'])
+            ->name('dashboard.imei-search')
+            ->middleware('role:admin');
     });
 
-    // Sales Dashboard
+    // Staff Dashboard (admin chara shob role)
     Route::get('/sales/dashboard', function () {
         return view('back-end.sales.dashboard');
-    })->name('sales.dashboard')->middleware('role:salesman,manager');
+    })->name('sales.dashboard')->middleware('role:' . implode(',', User::staffRoles()));
 
 
     Route::prefix('profile')->name('profile.')->group(function () {
@@ -210,6 +219,15 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/change/status/{id}', [ProductController::class, 'changeStatus'])->name('status.change')->middleware('can:update product');
 
         Route::get('/barcode/{id}', [ProductController::class, 'printBarcode'])->name('print.barcode')->middleware('can:read product');
+
+        // product details + variant (RAM/ROM/color) list
+        Route::get('/show/{id}', [ProductController::class, 'show'])->name('show')->middleware('can:read product');
+
+        // variant: SKU, barcode, dam, status, threshold (quantity na - seta stock workflow e)
+        Route::post('/{id}/variant/store', [ProductVariantController::class, 'store'])->name('variant.store')->middleware('can:update product');
+        Route::put('/variant/update/{id}', [ProductVariantController::class, 'update'])->name('variant.update')->middleware('can:update product');
+        Route::post('/variant/status/{id}', [ProductVariantController::class, 'changeStatus'])->name('variant.status')->middleware('can:update product');
+        Route::delete('/variant/delete/{id}', [ProductVariantController::class, 'delete'])->name('variant.delete')->middleware('can:delete product');
     });
     /* product */
 
@@ -353,8 +371,10 @@ Route::middleware(['auth'])->group(function () {
 
     /* get (sale/purchase form er ajax) */
     Route::prefix('get')->name('get.')->group(function () {
-        Route::get('/product-details/{id}', [AdditionalController::class, 'getProductDetails'])->name('product.details');
-        Route::get('/products-by-category/{id}', [AdditionalController::class, 'getProductsByCategory']);
+        // product er kenar dam thake, tai shudhu purchase form er jonno
+        Route::get('/product-details/{id}', [AdditionalController::class, 'getProductDetails'])->name('product.details')->middleware('permission:create purchase');
+        Route::get('/products-by-category/{id}', [AdditionalController::class, 'getProductsByCategory'])->middleware('permission:read stock report|read product|create purchase');
+        Route::get('/product-variants/{id}', [AdditionalController::class, 'getProductVariants'])->name('product.variants')->middleware('permission:create purchase');
     });
     /* get */
 
@@ -362,7 +382,7 @@ Route::middleware(['auth'])->group(function () {
     Route::prefix('reports')->name('reports.')->group(function () {
         Route::get('/dead-stock', [StockReportController::class, 'DeadStockReport'])->name('dead.stock')->middleware('can:read stock report');
         Route::get('/stock', [StockReportController::class, 'stockReport'])->name('stock')->middleware('can:read stock report');
-        Route::get('/imei-tracking', [StockReportController::class, 'imeiReport'])->name('imei')->middleware('can:read sales report');
+        Route::get('/imei-tracking', [StockReportController::class, 'imeiReport'])->name('imei')->middleware('permission:read sales report|search imei');
         Route::get('/sales-summary', [ReportController::class, 'salesSummary'])->name('sales_summary')->middleware('can:read sales report');
         Route::get('/sales-item-wise', [ReportController::class, 'salesItemReport'])->name('sales_item')->middleware('can:read sales report');
 

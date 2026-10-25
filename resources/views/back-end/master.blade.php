@@ -664,15 +664,16 @@ img.menuImage{
 
   {!! Toastr::message() !!}
 
-  {{-- controller er back()->with('error'|'success', ...) message dekhano --}}
+  {{-- controller er back()->with('error'|'success', ...) message dekhano.
+       toastr HTML render kore, ar message e user er input (IMEI, naam) thakte pare, tai e() diye escape --}}
   @if (session('error'))
-    <script>toastr.error(@json(session('error')), 'Error', { timeOut: 10000 });</script>
+    <script>toastr.error(@json(e(session('error'))), 'Error', { timeOut: 10000 });</script>
   @endif
   @if (session('success'))
-    <script>toastr.success(@json(session('success')));</script>
+    <script>toastr.success(@json(e(session('success'))));</script>
   @endif
   @if ($errors->any())
-    <script>toastr.error(@json(implode('<br>', $errors->all())), 'Please fix the following', { timeOut: 10000 });</script>
+    <script>toastr.error(@json(implode('<br>', array_map('e', $errors->all()))), 'Please fix the following', { timeOut: 10000 });</script>
   @endif
 
     <script>

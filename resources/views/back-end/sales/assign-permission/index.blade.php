@@ -7,12 +7,12 @@
         <div class="card-body">
             <form method="GET" id="salesmanSelectForm">
                 <div class="mb-3">
-                    <label>Select Salesman</label>
+                    <label>Select Staff</label>
                     <select name="saleman_id" id="saleman_id" class="form-control" onchange="document.getElementById('salesmanSelectForm').submit();">
-                        <option value="">-- Select Salesman --</option>
+                        <option value="">-- Select Staff --</option>
                         @foreach($salemans as $saleman)
                             <option value="{{ $saleman->id }}" {{ request('saleman_id') == $saleman->id ? 'selected' : '' }}>
-                                {{ $saleman->name }}
+                                {{ $saleman->name }} ({{ $saleman->roleLabel() }}){{ $saleman->isActive() ? '' : ' - inactive' }}
                             </option>
                         @endforeach
                     </select>
@@ -21,10 +21,17 @@
         </div>
     </div>
 
-    @if(request('saleman_id'))
+    @if($selected)
     <form action="{{ route('salesman-permission.assign.store') }}" method="POST">
         @csrf
-        <input type="hidden" name="saleman_id" value="{{ request('saleman_id') }}">
+        <input type="hidden" name="saleman_id" value="{{ $selected->id }}">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <span>Role: <strong>{{ $selected->roleLabel() }}</strong></span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="load-role-defaults">
+                Load {{ $selected->roleLabel() }} defaults
+            </button>
+        </div>
 
         @foreach($permissions as $groupName => $groupPermissions)
         <div class="card mb-3">
@@ -45,8 +52,7 @@
                                 class="form-check-input permission-checkbox group-{{ Str::slug($groupName) }}"
                                 name="permissions[]"
                                 value="{{ $permission->name }}"
-                                {{-- সরাসরি চেক করা যদি ইউজারের এই পারমিশন থাকে --}}
-                                {{ App\Models\User::find(request('saleman_id'))->hasDirectPermission($permission->name) ? 'checked' : '' }}>
+                                {{ in_array($permission->name, $assigned) ? 'checked' : '' }}>
                             <label class="form-check-label">
                                 {{ $permission->name }}
                             </label>
@@ -75,5 +81,18 @@
             });
         });
     });
+
+    // Role er default permission check kore (save na korle kichu bodlay na)
+    @if($selected)
+    const roleDefaults = @json($templates[$selected->role] ?? []);
+    document.getElementById('load-role-defaults')?.addEventListener('click', function () {
+        if (!confirm('Replace the ticked permissions with the role defaults? Nothing is saved until you click Assign Permission.')) {
+            return;
+        }
+        document.querySelectorAll('.permission-checkbox').forEach(checkbox => {
+            checkbox.checked = roleDefaults.includes(checkbox.value);
+        });
+    });
+    @endif
 </script>
 @endpush

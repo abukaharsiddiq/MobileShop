@@ -18,10 +18,46 @@ class Product extends Model
         'color_id',
         'purchase_price',
         'sale_price',
+        'low_stock_threshold',
+        'warranty_months',
+        'description',
         'unit',
-        'opening_quantity',
         'status',
     ];
+
+    // Product shudhu model master; stock protiti variant (main_stocks) e alada.
+    // opening_quantity purono column, ar lekha hoy na (stock purchase/adjustment diye ashe).
+    // ram_id/rom_id/color_id = default variant (notun purchase form e age theke bacha thake).
+
+    protected function casts(): array
+    {
+        return [
+            'status' => 'boolean',
+            'low_stock_threshold' => 'integer',
+            'warranty_months' => 'integer',
+        ];
+    }
+
+    public function variants()
+    {
+        return $this->hasMany(MainStock::class);
+    }
+
+    // default variant (product er RAM/ROM/Color) er stock row
+    public function defaultVariant()
+    {
+        return $this->variants()
+            ->where(fn ($q) => $this->ram_id ? $q->where('ram_id', $this->ram_id) : $q->whereNull('ram_id'))
+            ->where(fn ($q) => $this->rom_id ? $q->where('rom_id', $this->rom_id) : $q->whereNull('rom_id'))
+            ->where(fn ($q) => $this->color_id ? $q->where('color_id', $this->color_id) : $q->whereNull('color_id'))
+            ->first();
+    }
+
+    // shob variant er stock jog (product e alada kore rakha hoy na)
+    public function totalStock(): int
+    {
+        return (int) ($this->variants_sum_quantity ?? $this->variants()->sum('quantity'));
+    }
 
 
     public function category()
@@ -88,5 +124,22 @@ class Product extends Model
     public function allowsImei()
     {
         return $this->type !== 'accessory';
+    }
+
+    // Smart phone (notun/used/refurbished) er variant e RAM ar storage lagbe
+    public static function typeRequiresMemory(?string $type): bool
+    {
+        return in_array($type, self::IMEI_REQUIRED_TYPES, true);
+    }
+
+    // Accessories er RAM/storage hoy na (color hote pare)
+    public static function typeAllowsMemory(?string $type): bool
+    {
+        return $type !== 'accessory';
+    }
+
+    public function isActive(): bool
+    {
+        return (bool) $this->status;
     }
 }

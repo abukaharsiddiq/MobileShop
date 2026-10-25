@@ -280,10 +280,10 @@
                         </select>
                     </td>
                     <td>
-                        <div id="variant_info${rowCount}" class="small text-muted">Select product...</div>
-                        <input type="hidden" name="items[${rowCount}][ram_id]" id="ram_id${rowCount}">
-                        <input type="hidden" name="items[${rowCount}][rom_id]" id="rom_id${rowCount}">
-                        <input type="hidden" name="items[${rowCount}][color_id]" id="color_id${rowCount}">
+                        {{-- kon variant (RAM/ROM/color) kena hocche; notun variant product page theke jog hoy --}}
+                        <select name="items[${rowCount}][main_stock_id]" id="variant${rowCount}" class="form-control form-control-sm variant-select" data-id="${rowCount}" required>
+                            <option value="">Select product...</option>
+                        </select>
                     </td>
                     <td>
                         <button type="button" class="btn btn-sm btn-info open-imei-modal" data-id="${rowCount}"><i class="fas fa-barcode"></i></button>
@@ -302,15 +302,36 @@
         $(document).on('change', '.product-select', function() {
             let id = $(this).data('id');
             let productId = $(this).val();
+            let variantSelect = $(`#variant${id}`).empty();
             if(productId) {
-                $.get("{{ url('get/product-details') }}/" + productId, function(data) {
-                    $(`#price${id}`).val(data.purchase_price);
-                    $(`#ram_id${id}`).val(data.ram_id);
-                    $(`#rom_id${id}`).val(data.rom_id);
-                    $(`#color_id${id}`).val(data.color_id);
-                    $(`#variant_info${id}`).html(`R: ${data.ram?data.ram.ram_name:'N/A'} | M: ${data.rom?data.rom.rom_name:'N/A'}`);
-                    calculateRowTotal(id);
+                $.get("{{ url('get/product-details') }}/" + productId, function(product) {
+                    $.get("{{ url('get/product-variants') }}/" + productId, function(variants) {
+                        if (!variants.length) {
+                            variantSelect.append(new Option('No active variant - add one on the product page', ''));
+                        }
+                        variants.forEach(function(v) {
+                            // text hisebe (HTML na), jate naam e kichu thakleo page e cholbe na
+                            let option = new Option(v.label, v.id, v.is_default, v.is_default);
+                            $(option).attr('data-cost', v.last_cost);
+                            variantSelect.append(option);
+                        });
+                        let cost = parseFloat(variantSelect.find(':selected').data('cost')) || parseFloat(product.purchase_price) || 0;
+                        $(`#price${id}`).val(cost);
+                        calculateRowTotal(id);
+                        calculateTotal();
+                    });
                 });
+            }
+        });
+
+        // variant bodlale tar shesh kena dam
+        $(document).on('change', '.variant-select', function() {
+            let id = $(this).data('id');
+            let cost = parseFloat($(this).find(':selected').data('cost'));
+            if (cost) {
+                $(`#price${id}`).val(cost);
+                calculateRowTotal(id);
+                calculateTotal();
             }
         });
 

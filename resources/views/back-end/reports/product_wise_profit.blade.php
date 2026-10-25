@@ -77,11 +77,12 @@
                             
                             @forelse($reports as $key => $item)
                                 @php
-                                    $profit = ($item->sale_price - $item->purchase_price) - $item->item_discount;
-                                    
-                                    $totalPurchase += $item->purchase_price;
-                                    $totalSale += $item->sale_price;
-                                    $totalDiscount += $item->item_discount;
+                                    // controller e hishab: quantity, item discount ar invoice discount er bhag shoho
+                                    $profit = $item->profit;
+
+                                    $totalPurchase += $item->total_cost;
+                                    $totalSale += $item->gross_sale;
+                                    $totalDiscount += $item->total_discount;
                                     $totalProfit += $profit;
                                 @endphp
                                 <tr>
@@ -92,9 +93,15 @@
                                         <strong>{{ $item->product->product_name }}</strong><br>
                                         <small>{{ $item->ram->ram_name ?? '' }} / {{ $item->rom->rom_name ?? '' }} / {{ $item->color->color_name ?? '' }}</small>
                                     </td>
-                                    <td class="text-right">{{ number_format($item->purchase_price, 2) }}</td>
-                                    <td class="text-right">{{ number_format($item->sale_price, 2) }}</td>
-                                    <td class="text-right text-danger">{{ number_format($item->item_discount, 2) }}</td>
+                                    <td class="text-right">
+                                        {{ number_format($item->total_cost, 2) }}
+                                        <br><small class="text-muted">{{ $item->quantity }} × {{ number_format($item->purchase_price, 2) }}</small>
+                                    </td>
+                                    <td class="text-right">
+                                        {{ number_format($item->gross_sale, 2) }}
+                                        <br><small class="text-muted">{{ $item->quantity }} × {{ number_format($item->sale_price, 2) }}</small>
+                                    </td>
+                                    <td class="text-right text-danger">{{ number_format($item->total_discount, 2) }}</td>
                                     <td class="text-right font-weight-bold {{ $profit >= 0 ? 'text-success' : 'text-danger' }}">
                                         {{ number_format($profit, 2) }}
                                     </td>
