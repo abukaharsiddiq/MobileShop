@@ -119,7 +119,7 @@
                                 <td>{{ $stock->quantity * $stock->average_purchase_price }}</td>
                                 <td>
                                     @if($stock->quantity <= 0) <span class="badge badge-danger">Out of Stock</span>
-                                    @elseif($stock->quantity <= 5) <span class="badge badge-warning">Low Stock</span>
+                                    @elseif($stock->isLowStock()) <span class="badge badge-warning">Low Stock</span>
                                     @else <span class="badge badge-success">In Stock</span> @endif
                                 </td>
                             </tr>

@@ -30,6 +30,11 @@ class AppServiceProvider extends ServiceProvider
 
         // View render howar somoy load hoy (boot e na), jate migrate/artisan notun database e o chole
         View::composer('*', function ($view) {
+            // error page database chara o dekhate hobe (database e somossa holeo)
+            if (str_starts_with($view->name(), 'errors.')) {
+                return;
+            }
+
             static $settings = null;
             $settings ??= [
                 'extrasetting' => ExtraSetting::latest()->first(),

@@ -28,10 +28,18 @@
     <div class="card-body login-card-body">
       <p class="login-box-msg">Sign in to start your session</p>
 
+      {{-- bhul password, inactive account, beshi chesta (rate limit) ba password reset er message --}}
+      @if ($errors->any())
+        <div class="alert alert-danger py-2">{{ $errors->first() }}</div>
+      @endif
+      @if (session('status'))
+        <div class="alert alert-success py-2">{{ session('status') }}</div>
+      @endif
+
       <form action="{{ route('login') }}" method="post">
         @csrf
         <div class="input-group mb-3">
-          <input type="email" name="email" class="form-control" placeholder="Email">
+          <input type="email" name="email" class="form-control" placeholder="Email" value="{{ old('email') }}" autocomplete="username" required>
           <div class="input-group-append">
             <div class="input-group-text">
               <span class="fas fa-envelope"></span>
@@ -39,7 +47,7 @@
           </div>
         </div>
         <div class="input-group mb-3">
-          <input type="password" name="password" class="form-control" placeholder="Password">
+          <input type="password" name="password" class="form-control" placeholder="Password" autocomplete="current-password" required>
           <div class="input-group-append">
             <div class="input-group-text">
               <span class="fas fa-lock"></span>

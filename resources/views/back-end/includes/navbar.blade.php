@@ -17,7 +17,7 @@
         </li>
         @endif
 
-       @if ($user->role=='salesman')
+       @if (!$user->isAdmin())
         <li class="nav-item {{ $currentRoute == 'sales.dashboard' ? 'menu-open' : '' }}">
             <a href="{{ route('sales.dashboard') }}" class="nav-link {{ $currentRoute == 'sales.dashboard' ? 'active' : '' }}">
                 <i class="nav-icon fas fa-tachometer-alt"></i>
@@ -700,7 +700,8 @@
             $isAdmin = $user->role == 'admin';
         @endphp
 
-        @if($isAdmin || auth()->user()->hasAnyPermission(['create salesman', 'read salesman']))
+        {{-- staff route gulo role:admin --}}
+        @if($isAdmin)
             <li class="nav-item {{ request()->routeIs('salesman.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('salesman.*') ? 'active' : '' }}">
                     <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
@@ -713,30 +714,30 @@
                 <ul class="nav nav-treeview">
 
                     {{-- Salesman Section --}}
-                    @if($isAdmin || auth()->user()->hasAnyPermission(['create salesman', 'read salesman']))
+                    @if($isAdmin)
                     <li class="nav-item {{ request()->routeIs('salesman.*') ? 'menu-open' : '' }}">
                         <a href="#" class="nav-link {{ request()->routeIs('salesman.*') ? 'active' : '' }}">
                             <i class="far fa-folder nav-icon"></i>
-                            <p>Salesman <i class="fas fa-angle-left right"></i></p>
+                            <p>Staff <i class="fas fa-angle-left right"></i></p>
                         </a>
 
                         <ul class="nav nav-treeview">
-                            @if($isAdmin || auth()->user()->can('create salesman'))
+                            @if($isAdmin)
                             <li class="nav-item">
                                 <a href="{{ route('salesman.create') }}"
                                    class="nav-link {{ request()->routeIs('salesman.create') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>Add Salesman</p>
+                                    <p>Add Staff</p>
                                 </a>
                             </li>
                             @endif
 
-                            @if($isAdmin || auth()->user()->can('read salesman'))
+                            @if($isAdmin)
                             <li class="nav-item">
                                 <a href="{{ route('salesman.index') }}"
                                    class="nav-link {{ request()->routeIs('salesman.index') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>
-                                    <p>Manage Salesman</p>
+                                    <p>Manage Staff</p>
                                 </a>
                             </li>
                             @endif
@@ -888,7 +889,8 @@
               $settingsActive = request()->routeIs('setting.create') || request()->routeIs('extra-settings.create');
           @endphp
 
-    
+            {{-- setting route shudhu admin er --}}
+            @if($user->isAdmin())
             <li class="nav-item {{ $settingsActive ? 'menu-open' : '' }}">
               <a href="#" class="nav-link {{ $settingsActive ? 'active' : '' }}">
                 <img src="{{ asset('/') }}back-end/icon/settings.png" class="menuImage">
@@ -915,6 +917,7 @@
 
               </ul>
             </li>
+            @endif
 
              <li class="nav-item">
             <a href="{{ route('profile.change.password') }}" class="nav-link">

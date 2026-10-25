@@ -29,8 +29,8 @@
                                 <th>Type</th>
                                 <th>Name/Model</th>
                                 <th>Category/Brand</th>
-                                <th>RAM/ROM</th>
-                                <th>Color</th>
+                                <th>Default Variant</th>
+                                <th>Variants / Stock</th>
                                 <th>Status</th>
                                 <th>Action</th>
                             </tr>
@@ -49,10 +49,19 @@
                                     {{ $product->brand->brand_name ?? '-' }}
                                 </td>
                                 <td>
-                                    {{ $product->ram->ram_name ?? '-' }}<br/>
-                                    {{ $product->rom->rom_name ?? '-' }}
+                                    {{ $product->ram->ram_name ?? '-' }} / {{ $product->rom->rom_name ?? '-' }}<br/>
+                                    {{ $product->color->color_name ?? '-' }}
                                 </td>
-                                <td>{{ $product->color->color_name ?? '-' }}</td>
+                                <td>
+                                    @php
+                                        $lowVariants = $product->variants->filter(fn ($v) => $v->status && $v->quantity > 0 && $v->isLowStock())->count();
+                                        $outVariants = $product->variants->filter(fn ($v) => $v->status && $v->quantity <= 0)->count();
+                                    @endphp
+                                    {{ $product->variants_count }} variant(s)<br/>
+                                    <b>Stock: {{ $product->totalStock() }}</b>
+                                    @if($lowVariants) <span class="badge badge-warning">{{ $lowVariants }} low</span> @endif
+                                    @if($outVariants) <span class="badge badge-danger">{{ $outVariants }} out</span> @endif
+                                </td>
                                 <td>
                                 <span class="d-none d-print-block">{{ $product->status == '1' ? 'active' : 'inactive' }}</span>
                                 <span class="d-print-none">
@@ -71,6 +80,10 @@
                               <div class="dropdown-menu" role="menu" style="">
 
                                 
+                                 <a class="dropdown-item" href="{{ route('product.show',['id'=>$product['id']]) }}">
+                                  <i class="fa fa-layer-group"></i> Details &amp; Variants
+                                </a>
+
                                  <a class="dropdown-item" href="{{ route('product.print.barcode',['id'=>$product['id']]) }}">
                                   <i class="fa fa-barcode"></i> Print
                                 </a>

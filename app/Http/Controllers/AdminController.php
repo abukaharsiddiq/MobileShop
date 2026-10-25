@@ -16,7 +16,7 @@ class AdminController extends Controller
 	    $thisMonth = now()->month;
 
 	    $data['today_sale'] = Sale::whereDate('sale_date', $today)->sum('grand_total');
-	    $data['monthly_expense'] = Expense::whereMonth('expense_date', $thisMonth)->sum('amount');
+	    $data['monthly_expense'] = Expense::whereYear('expense_date', now()->year)->whereMonth('expense_date', $thisMonth)->sum('amount');
 
 	    $data['total_stock_value'] = DB::table('main_stocks')
 	        ->sum(DB::raw('quantity * average_purchase_price'));
@@ -29,14 +29,18 @@ class AdminController extends Controller
 	        ->leftJoin('roms', 'main_stocks.rom_id', '=', 'roms.id')
 	        ->leftJoin('colors', 'main_stocks.color_id', '=', 'colors.id')
 	        ->select('products.product_name', 'rams.ram_name', 'roms.rom_name','colors.color_name', 'main_stocks.quantity')
-	        ->where('main_stocks.quantity', '<', 5)
+	        // variant -> product -> default threshold (0 o dekhay); inactive product/variant na
+	        ->whereRaw('main_stocks.quantity <= ' . \App\Models\MainStock::thresholdSql())
+	        ->where('main_stocks.status', 1)
+	        ->where('products.status', 1)
+	        ->orderBy('main_stocks.quantity')
 	        ->get();
 
 	       
 		$data['top_products'] = DB::table('sale_details')
 		    ->join('products', 'sale_details.product_id', '=', 'products.id')
 		    ->join('sales', 'sale_details.sale_id', '=', 'sales.id')
-		    ->whereMonth('sales.sale_date', now()->month)
+		    ->whereYear('sales.sale_date', now()->year)->whereMonth('sales.sale_date', now()->month)
 		    ->select('products.product_name', 
 		            DB::raw('SUM(sale_details.quantity) as total_qty'),
 		            DB::raw('SUM(sale_details.unit_total) as total_revenue'))

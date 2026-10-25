@@ -31,8 +31,9 @@
             <th>Name</th>
             <th>Email</th>
             <th>Phone</th>
-            <th>Address</th>
-            <th>AddedBy</th>
+            <th>Role</th>
+            <th>Branch</th>
+            <th>Status</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -44,8 +45,15 @@
             <td>{{ $employee->name }}</td>
             <td>{{ $employee->email }}</td>
             <td>{{ $employee->phone }}</td>
-            <td>{{ $employee->address }}</td>
-            <td>{{ $employee->creator->name ?? '' }}</td>
+            <td>{{ $employee->roleLabel() }}</td>
+            <td>{{ $branches[$employee->branch_id] ?? 'All branches' }}</td>
+            <td>
+              @if($employee->isActive())
+                <span class="badge badge-success">Active</span>
+              @else
+                <span class="badge badge-secondary">Inactive</span>
+              @endif
+            </td>
             <td>
               <button title="Action" class="btn without-focus border-0 px-1 py-0 mr-2" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                 <i class="fa fa-ellipsis-v"></i>
@@ -75,7 +83,7 @@
 @push('admin-scripts')
 <script>
 function confirmDelete(id){
-    if(confirm('Are you sure you want to delete this Manager?')){
+    if(confirm('Delete this user? If the user has sales or other history, the account will be deactivated instead.')){
         document.getElementById('deleteForm-'+id).submit();
     }
 }

@@ -41,7 +41,12 @@
                             </td>
                             <td><span class="badge badge-secondary">{{ $row->invoice_no }}</span></td>
                             <td class="text-center">{{ $row->installment_no }}</td>
-                            <td class="text-right font-weight-bold">{{ number_format($row->amount, 2) }}</td>
+                            <td class="text-right font-weight-bold">
+                                {{ number_format($row->amount - $row->paid_amount, 2) }}
+                                @if($row->paid_amount > 0)
+                                    <br><small class="text-muted">of {{ number_format($row->amount, 2) }} (partly paid)</small>
+                                @endif
+                            </td>
                             <td>
                                 <span class="{{ $isOverdue ? 'text-danger font-weight-bold' : '' }}">
                                     {{ $dueDate->format('d M, Y') }}

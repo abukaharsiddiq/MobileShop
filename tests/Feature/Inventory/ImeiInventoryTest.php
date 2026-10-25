@@ -33,6 +33,8 @@ class ImeiInventoryTest extends TestCase
         $this->seed(PermissionSeeder::class);
 
         $id = fn ($table, $data) => DB::table($table)->insertGetId($data + ['created_at' => now(), 'updated_at' => now()]);
+        $id('settings', ['sale_invoice_prefix' => 'INV', 'sale_invoice_number' => '0001',
+            'purchase_invoice_prefix' => 'PUR', 'purchase_invoice_number' => '0001']);
 
         $this->ids = [
             'category' => $id('categories', ['name' => 'Phone', 'slug' => 'phone']),

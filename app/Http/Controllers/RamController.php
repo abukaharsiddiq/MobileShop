@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Support\Facades\DB;
 use App\Models\Ram;
+use App\Services\CatalogUsage;
 
 class RamController extends Controller
 {
@@ -102,6 +103,13 @@ class RamController extends Controller
 
     public function delete($id){
         $ram = Ram::findOrFail($id);
+
+        // product/stock e use hole muchha jabe na (itihash bhange); inactive korte hobe
+        if (CatalogUsage::inUse('ram', $ram->id)) {
+            Toastr::error(CatalogUsage::message('RAM'), 'Error', ["positionClass" => "toast-top-right"]);
+            return redirect()->route('ram.index');
+        }
+
         $ram->delete();
 
         Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);

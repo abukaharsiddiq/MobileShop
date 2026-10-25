@@ -16,7 +16,19 @@ return Application::configure(basePath: dirname(__DIR__))
           'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
           'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
+
+        // inactive kora user er session protiti request e bondho hoy
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureUserIsActive::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // validation fail hole egulo session e (database) ferot jabe na
+        $exceptions->dontFlash([
+            'current_password',
+            'password',
+            'password_confirmation',
+            'new_password',
+            'confirm_password',
+        ]);
     })->create();

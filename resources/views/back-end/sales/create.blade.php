@@ -86,12 +86,25 @@
                             </div>
                         </div>
 
+                        <!-- Role -->
+                        <div class="form-group row">
+                            <label class="col-sm-3 col-form-label text-end">Role *</label>
+                            <div class="col-sm-9">
+                                <select name="role" class="form-control">
+                                    @foreach($roles as $value => $label)
+                                        <option value="{{ $value }}" {{ old('role', 'salesman') == $value ? 'selected' : '' }}>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                <small class="text-muted">The role's default permissions are given automatically. You can change them later from Assign Permission.</small>
+                            </div>
+                        </div>
+
                         <!-- Branch -->
                         <div class="form-group row">
                             <label class="col-sm-3 col-form-label text-end">Branch</label>
                             <div class="col-sm-9">
                                 <select name="branch_id" class="form-control">
-                                    <option value="">Default branch</option>
+                                    <option value="">Not assigned (all branches)</option>
                                     @foreach($branches as $branch)
                                         <option value="{{ $branch->id }}" {{ old('branch_id') == $branch->id ? 'selected' : '' }}>{{ $branch->name }}</option>
                                     @endforeach

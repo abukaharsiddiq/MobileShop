@@ -72,9 +72,10 @@ public function DeadStockReport(Request $request)
         if ($request->color_id) $query->where('color_id', $request->color_id);
 
         if ($request->status) {
-            if ($request->status == 'low') $query->where('quantity', '>', 0)->where('quantity', '<=', 5);
+            // low stock = variant/product er threshold (na thakle config er default)
+            if ($request->status == 'low') $query->lowStock();
             elseif ($request->status == 'out') $query->where('quantity', '<=', 0);
-            elseif ($request->status == 'in') $query->where('quantity', '>', 5);
+            elseif ($request->status == 'in') $query->aboveThreshold();
         }
 
         $stocks = $query->get();

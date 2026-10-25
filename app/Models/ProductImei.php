@@ -59,6 +59,17 @@ class ProductImei extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    // User je branch er device dhorte pare (branch chara purono record shobar jonno khola)
+    public function scopeAccessibleBy($query, User $user)
+    {
+        $branchIds = $user->allowedBranchIds();
+        if ($branchIds === null) {
+            return $query;
+        }
+
+        return $query->where(fn ($q) => $q->whereIn('branch_id', $branchIds)->orWhereNull('branch_id'));
+    }
+
     // "111, 222\n333" -> ['111', '222', '333']
     public static function parseList($text)
     {

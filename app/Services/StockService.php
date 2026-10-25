@@ -23,14 +23,17 @@ class StockService
      */
     public function move(MainStock $stock, int $quantity, string $type, ?Model $reference = null, ?string $note = null, ?int $branchId = null): StockMovement
     {
-        $balance = $stock->quantity + $quantity;
+        // database er man theke (object e kono bhul/atkano poriborton thakleo seta na)
+        $current = $stock->exists ? (int) $stock->getOriginal('quantity') : (int) $stock->quantity;
+        $balance = $current + $quantity;
 
         if ($balance < 0) {
-            throw new \Exception("Stock cannot go below zero for {$stock->variantLabel()} (current {$stock->quantity}, change {$quantity}).");
+            throw new \Exception("Stock cannot go below zero for {$stock->variantLabel()} (current {$current}, change {$quantity}).");
         }
 
         $stock->quantity = $balance;
-        $stock->save();
+        // MainStock er quantity shudhu ekhan theke bodlano jay
+        MainStock::withQuantityUnlocked(fn () => $stock->save());
 
         return StockMovement::create([
             'main_stock_id'  => $stock->id,

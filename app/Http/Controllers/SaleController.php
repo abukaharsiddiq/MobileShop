@@ -10,7 +10,11 @@ use App\Models\SaleDetail;
 use App\Models\MainStock;
 use App\Models\CustomerLedger;
 use App\Models\ProductImei;
+use App\Services\AuditLogger;
 use App\Services\ImeiService;
+use App\Services\InvoiceNumberService;
+use App\Services\LedgerService;
+use App\Services\SalePaymentService;
 use App\Services\StockService;
 use DB;
 use Auth;
@@ -22,6 +26,9 @@ class SaleController extends Controller
     public function __construct(
         private ImeiService $imeiService,
         private StockService $stockService,
+        private InvoiceNumberService $invoiceNumbers,
+        private LedgerService $ledger,
+        private SalePaymentService $payments,
     )
     {
         $this->heading = 'Sale';
@@ -60,33 +67,16 @@ public function updatePayment(Request $request)
 {
     $request->validate([
         'sale_id' => 'required|exists:sales,id',
-        'paid_amount' => 'required|numeric|min:1',
+        'paid_amount' => 'required|numeric|min:0.01',
         'payment_date' => 'required|date',
     ]);
 
     try {
         DB::beginTransaction();
 
-        $sale = Sale::findOrFail($request->sale_id);
-
-        $sale->paid_amount += $request->paid_amount;
-        $sale->due_amount -= $request->paid_amount;
-        $sale->save();
-
-        $lastLedger = CustomerLedger::where('customer_id', $sale->customer_id)->latest('id')->first();
-        $previousBalance = $lastLedger ? $lastLedger->balance : 0;
-
-        $ledger = new CustomerLedger();
-        $ledger->customer_id = $sale->customer_id;
-        $ledger->date = $request->payment_date;
-        $ledger->transaction_type = 'Received';
-        $ledger->sale_id = $sale->id;
-        $ledger->reference_no = $sale->invoice_no;
-        $ledger->debit = 0;
-        $ledger->credit = $request->paid_amount;
-        $ledger->balance = $previousBalance - $request->paid_amount;
-        $ledger->note = $request->note ?? 'Due payment for invoice: ' . $sale->invoice_no;
-        $ledger->save();
+        // due er beshi neya jay na; kisti thakle kisti te bhag hoy; ledger e entry
+        $this->payments->receive(Sale::findOrFail($request->sale_id), (float) $request->paid_amount,
+            $request->payment_date, $request->payment_method, $request->note);
 
         DB::commit();
         Toastr::success('Payment updated successfully!');
@@ -101,18 +91,17 @@ public function updatePayment(Request $request)
     public function create(){
         $name= $this->heading;
         $title = $this->heading;
-        $SaleinvoiceNo = $this->generateSaleInvoiceNo();;
+        // shudhu dekhanor jonno; asol number save er somoy toiri hoy
+        $SaleinvoiceNo = $this->invoiceNumbers->previewSale();
         $customers = Customer::where('status', 1)->get();
-        $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])->where('quantity', '>', 0)->get();
+        // shudhu active product er active variant (inactive bikri hoy na)
+        $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])->where('quantity', '>', 0)->active()->get();
         return view('back-end.sale.create',compact('name','title','customers','stocks','SaleinvoiceNo'));
     }
 
 
 public function store(Request $request)
 {
-
-    // dd($request->all());
-
     $request->validate([
         'customer_id' => 'required|exists:customers,id',
         'sale_date'   => 'required|date',
@@ -120,53 +109,40 @@ public function store(Request $request)
         'stock_ids.*' => 'required|exists:main_stocks,id',
         'qtys'        => 'required|array',
         'qtys.*'      => 'required|integer|min:1',
-        'sale_prices.*' => 'nullable|numeric|min:0',
+        'sale_prices'   => 'required|array',
+        'sale_prices.*' => 'required|numeric|min:0',
+        'item_discounts.*' => 'nullable|numeric|min:0',
         'imeis'       => 'nullable|array',
         'imeis.*'     => 'nullable|array',
+        'discount'    => 'nullable|numeric|min:0',
         'paid_amount' => 'required|numeric|min:0',
+        'is_installment'        => 'nullable|in:0,1',
+        'total_installments'    => 'required_if:is_installment,1|nullable|integer|min:1|max:60',
+        'next_installment_date' => 'nullable|date',
     ]);
 
     try {
         DB::beginTransaction();
 
+        $canSellBelowCost = $request->user()->can('sell below cost');
+
         $sale = new Sale();
-        $sale->invoice_no      = $request->invoice_no;
+        $sale->invoice_no      = $this->invoiceNumbers->nextSale();
         $sale->customer_id     = $request->customer_id;
         $sale->sale_date       = $request->sale_date;
-        $sale->subtotal        = $request->subtotal;
-        $sale->discount        = $request->discount ?? 0;
-        $sale->grand_total     = $request->grand_total;
-        $sale->paid_amount     = $request->paid_amount;
-        $sale->due_amount      = $request->due_amount;
-
-        $sale->is_installment = $request->is_installment ?? 0;
-        $sale->total_installments = $request->total_installments ?? 0;
-        $sale->installment_per_month = $request->installment_per_month ?? 0;
-        $sale->total_paid_installments = 0;
-
+        $sale->subtotal        = 0;
+        $sale->discount        = 0;
+        $sale->grand_total     = 0;
+        $sale->paid_amount     = 0;
+        $sale->due_amount      = 0;
         $sale->payment_method  = $request->payment_method;
         $sale->payment_account = $request->payment_account;
         $sale->created_by      = auth()->id();
         $sale->save();
 
-        if ($sale->is_installment == 1 && $sale->total_installments > 0) {
-            $nextDate = \Carbon\Carbon::parse($request->next_installment_date ?? now()->addMonth());
-            
-            for ($i = 1; $i <= $sale->total_installments; $i++) {
-                DB::table('installments')->insert([
-                    'sale_id'         => $sale->id,
-                    'customer_id'     => $sale->customer_id,
-                    'installment_no'  => $i,
-                    'amount'          => $sale->installment_per_month,
-                    'paid_amount'     => 0,
-                    'due_date'        => $nextDate->copy()->addMonths($i - 1),
-                    'status'          => 'pending',
-                    'created_at'      => now(),
-                    'updated_at'      => now(),
-                ]);
-            }
-        }
-
+        $subtotal = 0;
+        $totalCost = 0;
+        $belowCost = [];
 
         foreach ($request->stock_ids as $key => $stock_id) {
             $qty = (int) ($request->qtys[$key] ?? 0);
@@ -174,6 +150,10 @@ public function store(Request $request)
             // Variant (RAM/ROM/Color) main_stock_id diye; lock kore jate eki somoy duijon eki stock bikri na kore
             $stock = MainStock::with(['product', 'ram', 'rom', 'color'])->lockForUpdate()->findOrFail($stock_id);
             $label = $stock->variantLabel();
+
+            if (!$stock->isSellable()) {
+                throw new \Exception("{$label} is inactive and cannot be sold.");
+            }
 
             if ($qty > $stock->quantity) {
                 throw new \Exception("Not enough stock for {$label}. Available: {$stock->quantity}, requested: {$qty}.");
@@ -196,6 +176,26 @@ public function store(Request $request)
                 if ($imeis->count() != count($imeiIds)) {
                     throw new \Exception("{$label}: one or more selected IMEI are already sold or do not belong to this product.");
                 }
+
+                // onno branch e thaka phone ei user bikri korte parbe na
+                $otherBranch = $imeis->reject(fn ($i) => $request->user()->canAccessBranch($i->branch_id));
+                if ($otherBranch->isNotEmpty()) {
+                    throw new \Exception("{$label}: these IMEI are in another branch: " . $otherBranch->pluck('imei_no')->implode(', '));
+                }
+            }
+
+            // line er hishab server e (browser er total bishwas kora hoy na)
+            $price = round((float) $request->sale_prices[$key], 2);
+            $itemDiscount = round((float) ($request->item_discounts[$key] ?? 0));
+            $lineGross = round($qty * $price, 2);
+            if ($itemDiscount > $lineGross) {
+                throw new \Exception("{$label}: discount cannot be more than the line total.");
+            }
+            $lineTotal = round($lineGross - $itemDiscount, 2);
+            $cost = (float) ($stock->average_purchase_price ?? 0);
+
+            if ($lineTotal / $qty < $cost) {
+                $belowCost[] = "{$label}: selling at " . number_format($lineTotal / $qty, 2) . ', cost ' . number_format($cost, 2);
             }
 
             $item = new SaleDetail();
@@ -205,11 +205,14 @@ public function store(Request $request)
             $item->rom_id         = $stock->rom_id;
             $item->color_id       = $stock->color_id;
             $item->quantity       = $qty;
-            $item->purchase_price = $stock->average_purchase_price ?? 0;
-            $item->sale_price     = $request->sale_prices[$key] ?? 0;
-            $item->item_discount  = $request->item_discounts[$key] ?? 0;
-            $item->unit_total     = ($qty * $item->sale_price) - $item->item_discount;
+            $item->purchase_price = $cost;
+            $item->sale_price     = $price;
+            $item->item_discount  = $itemDiscount;
+            $item->unit_total     = $lineTotal;
             $item->save();
+
+            $subtotal += $lineTotal;
+            $totalCost += $qty * $cost;
 
             foreach ($imeis as $imei) {
                 $imei->update([
@@ -223,24 +226,55 @@ public function store(Request $request)
             $this->stockService->move($stock, -$qty, StockService::SALE, $sale);
         }
 
-        $lastLedger = CustomerLedger::where('customer_id', $request->customer_id)
-                                    ->orderBy('id', 'desc')
-                                    ->first();
-        
-        $previousBalance = $lastLedger ? $lastLedger->balance : 0;
-        $currentBalance  = $previousBalance + ($request->grand_total - $request->paid_amount);
+        // invoice er hishab
+        $subtotal = round($subtotal, 2);
+        $discount = round((float) ($request->discount ?? 0), 2);
+        if ($discount > $subtotal) {
+            throw new \Exception('Invoice discount cannot be more than the subtotal.');
+        }
+        $grandTotal = round($subtotal - $discount, 2);
+        if ($grandTotal < round($totalCost, 2)) {
+            $belowCost[] = 'Invoice total ' . number_format($grandTotal, 2) . ' is below cost ' . number_format($totalCost, 2);
+        }
 
-        $ledger = new CustomerLedger();
-        $ledger->customer_id      = $request->customer_id;
-        $ledger->date             = $request->sale_date;
-        $ledger->transaction_type = 'Sale';
-        $ledger->sale_id          = $sale->id;
-        $ledger->reference_no     = $sale->invoice_no;
-        $ledger->debit            = $request->grand_total;
-        $ledger->credit           = $request->paid_amount;
-        $ledger->balance          = $currentBalance;
-        $ledger->note             = 'Sale Invoice: ' . $sale->invoice_no;
-        $ledger->save();
+        // kroymuller niche bikri shudhu jader permission ache (audit log e thake)
+        if ($belowCost) {
+            if (!$canSellBelowCost) {
+                throw new \Exception('Sale price is below purchase cost. ' . implode('; ', $belowCost));
+            }
+            AuditLogger::log('sale.below_cost', $sale, null, ['lines' => $belowCost]);
+        }
+
+        $paid = round((float) $request->paid_amount, 2);
+        if ($paid > $grandTotal) {
+            throw new \Exception('Paid amount (' . number_format($paid, 2) . ') cannot be more than the grand total (' . number_format($grandTotal, 2) . ').');
+        }
+
+        $sale->subtotal    = $subtotal;
+        $sale->discount    = $discount;
+        $sale->grand_total = $grandTotal;
+        $sale->paid_amount = $paid;
+        $sale->due_amount  = round($grandTotal - $paid, 2);
+        $sale->save();
+
+        if ($request->is_installment == 1) {
+            if ($sale->due_amount <= 0) {
+                throw new \Exception('Nothing is due, so an installment plan is not needed.');
+            }
+            $firstDate = \Carbon\Carbon::parse($request->next_installment_date ?? now()->addMonth());
+            $this->payments->createSchedule($sale, (int) $request->total_installments, $firstDate);
+        }
+
+        $this->ledger->customerEntry([
+            'customer_id'      => $sale->customer_id,
+            'date'             => $sale->sale_date,
+            'transaction_type' => 'Sale',
+            'sale_id'          => $sale->id,
+            'reference_no'     => $sale->invoice_no,
+            'debit'            => $grandTotal,
+            'credit'           => $paid,
+            'note'             => 'Sale Invoice: ' . $sale->invoice_no,
+        ]);
 
         DB::commit();
         Toastr::success('Sale Added Successfully', 'Success', ["positionClass" => "toast-top-right"]);
@@ -255,39 +289,12 @@ public function store(Request $request)
     }
 }
 
-
-    private function generateSaleInvoiceNo()
-{
-    return DB::transaction(function () {
-
-        $setting = Setting::lockForUpdate()->first();
-
-        $prefix = $setting->sale_invoice_prefix;
-        $startInvoiceNo = $setting->sale_invoice_number;
-
-        $latestSale = Sale::lockForUpdate()->latest('id')->first();
-
-        if (!$latestSale || !$latestSale->invoice_no) {
-            return $prefix . '-' . $startInvoiceNo;
-        }
-
-        $numberPart = str_replace($prefix . '-', '', $latestSale->invoice_no);
-        $newNumber = (int)$numberPart + 1;
-
-        return $prefix . '-' . str_pad(
-            $newNumber,
-            strlen($startInvoiceNo),
-            '0',
-            STR_PAD_LEFT
-        );
-    });
-}
-
 public function getAvailableImeis($stock_id)
 {
-    // shudhu ei variant er stock e thaka IMEI
+    // shudhu ei variant er stock e thaka IMEI, user er branch er
     $imeis = ProductImei::where('main_stock_id', $stock_id)
                 ->where('status', ProductImei::STATUS_IN_STOCK)
+                ->accessibleBy(request()->user())
                 ->get(['id', 'imei_no']);
 
     return response()->json($imeis);
@@ -462,6 +469,7 @@ public function findByImei($imei_no)
     $imei = ProductImei::where('imei_no', $imei_no)
                 ->where('status', ProductImei::STATUS_IN_STOCK) // শুধু স্টোকে থাকা আইটেম
                 ->whereNotNull('main_stock_id')
+                ->accessibleBy(request()->user())
                 ->latest('id')
                 ->first();
 
@@ -472,6 +480,20 @@ public function findByImei($imei_no)
             'product_id' => $imei->product_id,
             'imei_id' => $imei->id,
             'price' => $imei->product->sale_price // যদি প্রাইস পাঠাতে চান
+        ]);
+    }
+
+    // IMEI na hole variant er barcode/SKU (accessory scan kora)
+    $stock = MainStock::where(fn ($q) => $q->where('barcode', $imei_no)->orWhere('sku', strtoupper($imei_no)))
+        ->where('quantity', '>', 0)
+        ->active()
+        ->first();
+    if ($stock) {
+        return response()->json([
+            'success'  => true,
+            'stock_id' => $stock->id,
+            'imei_id'  => null,
+            'price'    => $stock->sale_price,
         ]);
     }
 

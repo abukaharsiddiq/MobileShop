@@ -40,12 +40,14 @@
                             <td class="text-center">
                                 @if($row->status == 'paid')
                                     <span class="badge badge-pill badge-success">Paid</span>
+                                @elseif($row->status == 'partial')
+                                    <span class="badge badge-pill badge-info">Partial</span>
                                 @else
                                     <span class="badge badge-pill badge-warning">Pending</span>
                                 @endif
                             </td>
                             <td class="text-center">
-                                @if($row->status == 'pending')
+                                @if($row->status != 'paid')
                                     <a href="{{ route('installments.create') }}?customer_id={{ $row->customer_id }}" 
                                        class="btn btn-info btn-sm" title="Pay Now">
                                         <i class="fa fa-money-bill-wave"></i> Pay

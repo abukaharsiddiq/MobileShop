@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Support\Facades\DB;
 use App\Models\Category;
+use App\Services\CatalogUsage;
 
 class CategoryController extends Controller
 {
@@ -102,6 +103,13 @@ class CategoryController extends Controller
 
     public function delete($id){
         $category = Category::findOrFail($id);
+
+        // product/stock e use hole muchha jabe na (itihash bhange); inactive korte hobe
+        if (CatalogUsage::inUse('category', $category->id)) {
+            Toastr::error(CatalogUsage::message('category'), 'Error', ["positionClass" => "toast-top-right"]);
+            return redirect()->route('category.index');
+        }
+
         $category->delete();
 
         Toastr::success('Category Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);

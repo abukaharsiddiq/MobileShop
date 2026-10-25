@@ -6,7 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Customer;
 use App\Models\Sale;
-use App\Models\CustomerLedger;
+use App\Models\Installment;
+use App\Services\SalePaymentService;
 use Toastr;
 
 
@@ -15,7 +16,7 @@ class InstallmentCollectionController extends Controller
 
     private $heading;
 
-    public function __construct(){
+    public function __construct(private SalePaymentService $payments){
         $this->heading = "Installment Collection";
     }
 
@@ -45,7 +46,7 @@ class InstallmentCollectionController extends Controller
         $installments = DB::table('installments')
             ->join('sales', 'installments.sale_id', '=', 'sales.id')
             ->where('installments.customer_id', $id)
-            ->where('installments.status', 'pending')
+            ->where('installments.status', '!=', 'paid')
             ->select('installments.*', 'sales.invoice_no')
             ->orderBy('installments.due_date', 'asc')
             ->get();
@@ -57,51 +58,23 @@ class InstallmentCollectionController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'installment_id' => 'required',
-            'paid_amount'    => 'required|numeric|min:1',
+            'installment_id' => 'required|exists:installments,id',
+            'paid_amount'    => 'required|numeric|min:0.01',
             'payment_method' => 'required',
         ]);
 
         try {
             DB::beginTransaction();
 
-            $installment = DB::table('installments')->where('id', $request->installment_id)->first();
-            if (!$installment) {
-                throw new \Exception('Installment not found!');
+            $installment = Installment::findOrFail($request->installment_id);
+            if ($installment->status === 'paid') {
+                throw new \Exception('This installment is already paid.');
             }
 
-            // ২. কিস্তি টেবিল আপডেট
-            DB::table('installments')->where('id', $request->installment_id)->update([
-                'paid_amount' => $request->paid_amount,
-                'status'      => 'paid',
-                'updated_at'  => now()
-            ]);
-
-            // ৩. মেইন সেল টেবিল আপডেট (পেইড এবং ডিউ অ্যামাউন্ট)
-            $sale = Sale::find($installment->sale_id);
-            $sale->paid_amount += $request->paid_amount;
-            $sale->due_amount  -= $request->paid_amount;
-            $sale->total_paid_installments += 1;
-            $sale->save();
-
-            // ৪. কাস্টমার লেজারে পেমেন্ট এন্ট্রি
-            $lastLedger = CustomerLedger::where('customer_id', $sale->customer_id)
-                                        ->orderBy('id', 'desc')
-                                        ->first();
-            
-            $previousBalance = $lastLedger ? $lastLedger->balance : 0;
-
-            $ledger = new CustomerLedger();
-            $ledger->customer_id      = $sale->customer_id;
-            $ledger->date             = now();
-            $ledger->transaction_type = 'Installment Payment';
-            $ledger->sale_id          = $sale->id;
-            $ledger->reference_no     = $sale->invoice_no;
-            $ledger->debit            = 0;
-            $ledger->credit           = $request->paid_amount;
-            $ledger->balance          = $previousBalance - $request->paid_amount; // ডিউ কমবে
-            $ledger->note             = "Paid Installment No: " . $installment->installment_no;
-            $ledger->save();
+            // ansik payment hoy; beshi dile porer kisti te jay; sale er due er beshi neya jay na
+            $this->payments->receive(Sale::findOrFail($installment->sale_id), (float) $request->paid_amount,
+                now()->toDateString(), $request->payment_method,
+                'Installment No: ' . $installment->installment_no, 'Installment Payment', $installment->id);
 
             DB::commit();
             Toastr::success('Installment Payment Received!', 'Success');
@@ -118,7 +91,7 @@ class InstallmentCollectionController extends Controller
     $installments = DB::table('installments')
         ->join('customers', 'installments.customer_id', '=', 'customers.id')
         ->join('sales', 'installments.sale_id', '=', 'sales.id')
-        ->where('installments.status', 'pending') // শুধুমাত্র পেন্ডিং কিস্তি
+        ->where('installments.status', '!=', 'paid') // শুধুমাত্র পেন্ডিং কিস্তি
         ->select('installments.*', 'customers.name as customer_name', 'customers.phone', 'sales.invoice_no')
         ->orderBy('installments.due_date', 'asc')
         ->paginate(20);

@@ -66,7 +66,7 @@
 
                                 <div class="col-md-6 mb-3">
                                     <label class="fw-bold">Product Name</label>
-                                    <input type="text" name="product_name" class="form-control" value="{{ $product->product_name }}" required>
+                                    <input type="text" name="product_name" class="form-control" value="{{ old('product_name', $product->product_name) }}" required>
                                 </div>
                                 
                             </div>
@@ -76,7 +76,7 @@
 
                                 <div class="col-md-6 mb-3">
                                     <label class="fw-bold">Model / Code</label>
-                                    <input type="text" name="model_number" class="form-control" value="{{ $product->model_number }}" required>
+                                    <input type="text" name="model_number" class="form-control" value="{{ old('model_number', $product->model_number) }}" required>
                                 </div>
                                 
                                 <div class="col-md-6 mb-3">
@@ -91,12 +91,12 @@
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="fw-bold">Purchase Price</label>
-                                    <input type="text" name="purchase_price" class="form-control" value="{{ old('purchase_price',$product->purchase_price) }}" placeholder="Purchase Price">
+                                    <input type="number" step="0.01" min="0" name="purchase_price" class="form-control" value="{{ old('purchase_price',$product->purchase_price) }}" placeholder="Default cost for new variants" required>
                                 </div>
 
                                 <div class="col-md-6 mb-3">
                                     <label class="fw-bold">Sale Price</label>
-                                    <input type="text" name="sale_price" class="form-control" value="{{ old('sale_price',$product->sale_price) }}" placeholder="Sale Price">
+                                    <input type="number" step="0.01" min="0" name="sale_price" class="form-control" value="{{ old('sale_price',$product->sale_price) }}" placeholder="Sale Price" required>
                                 </div>
 
                             </div>
@@ -118,7 +118,7 @@
                                     </select>
                                 </div>
                                 <div class="col-md-4 mb-3">
-                                    <label class="fw-bold">ROM</label>
+                                    <label class="fw-bold">Storage (ROM)</label>
                                     <select name="rom_id" class="form-control">
                                         <option value="">Select ROM</option>
                                         @foreach($roms as $rom)
@@ -140,13 +140,23 @@
                            
                         </fieldset>
 
-                        {{-- ACCESSORY --}}
-                        <fieldset id="accessoryFields" class="border p-3 mb-3 bg-light" style="display:none;">
-                            <legend class="fw-bold text-success"><i class="fas fa-headphones"></i> Accessories</legend>
-                            <div class="mb-3">
-                                <label class="fw-bold">Description / Notes (Optional)</label>
-                                <textarea name="accessory_note" class="form-control" rows="2">{{ $product->accessory_note }}</textarea>
+                        {{-- STOCK RULES & OTHER --}}
+                        <fieldset class="border p-3 mb-3">
+                            <legend class="fw-bold text-primary">Stock Rules &amp; Other Details</legend>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="fw-bold">Low Stock Alert At</label>
+                                    <input type="number" name="low_stock_threshold" class="form-control" min="0" value="{{ old('low_stock_threshold', $product->low_stock_threshold) }}" placeholder="Default {{ config('inventory.low_stock_threshold') }}">
+                                    <small class="text-muted">Each variant can override this on the product page.</small>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="fw-bold">Warranty (months)</label>
+                                    <input type="number" name="warranty_months" class="form-control" min="0" max="120" value="{{ old('warranty_months', $product->warranty_months) }}">
+                                </div>
                             </div>
+                            <label class="fw-bold">Description / Notes (Optional)</label>
+                            <textarea name="description" class="form-control" rows="2" maxlength="2000">{{ old('description', $product->description) }}</textarea>
+                            <small class="text-muted d-block mt-2">Stock quantity and purchase cost of each variant are not changed here. Selling price change applies to the default variant; other variants are priced on the product page.</small>
                         </fieldset>
 
                     </div>
@@ -166,24 +176,20 @@
 <script>
 function toggleFields(type){
     const phoneFields = document.getElementById('phoneFields');
-    const accessoryFields = document.getElementById('accessoryFields');
 
     if(['smart_phone', 'used_phone', 'refurbished_phone'].includes(type)){
         phoneFields.style.display = 'block';
-        accessoryFields.style.display = 'none';
         phoneFields.querySelectorAll('select, textarea').forEach(el => el.disabled = false);
 
     } else if(type === 'button_phone'){
+        // button phone: RAM/storage oichchhik, color thake
         phoneFields.style.display = 'block';
-        accessoryFields.style.display = 'none';
-        phoneFields.querySelectorAll('select, textarea').forEach(el => el.disabled = true);
-        phoneFields.querySelector('select[name="color_id"]').disabled = false;
-        phoneFields.querySelector('textarea[name="imeis"]').disabled = false;
+        phoneFields.querySelectorAll('select, textarea').forEach(el => el.disabled = false);
 
     } else if(type === 'accessory'){
+        // accessory er RAM/storage hoy na
         phoneFields.style.display = 'none';
         phoneFields.querySelectorAll('select, textarea').forEach(el => el.disabled = true);
-        accessoryFields.style.display = 'block';
     }
 }
 

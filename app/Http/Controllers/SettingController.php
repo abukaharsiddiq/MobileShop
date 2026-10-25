@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Setting;
 use Brian2694\Toastr\Facades\Toastr;
+use Illuminate\Support\Str;
 
 class SettingController extends Controller
 {
@@ -21,6 +22,7 @@ class SettingController extends Controller
 
 
 	  public function store(Request $request){
+	    $this->validateSetting($request);
 
 	    $info = new Setting();
 	    $info->name = $request->name;
@@ -44,7 +46,8 @@ class SettingController extends Controller
 	    foreach ($fileFields as $field) {
 	        if ($request->hasFile($field)) {
 	            $file = $request->$field;
-	            $fileName = time() . '.' . $file->getClientOriginalName();
+	            // client er deya naam/extension bishwas kora hoy na (public folder e .php upload bondho)
+	            $fileName = Str::random(32) . '.' . $file->extension();
 	            $file->move($path, $fileName);
 	            $info->$field = $fileName;
 	        }
@@ -67,6 +70,7 @@ class SettingController extends Controller
 
 
 	public function update(Request $request, $id){
+	    $this->validateSetting($request);
 
 	    $info = Setting::findOrFail($id);
 	    $info->name = $request->name;
@@ -95,7 +99,7 @@ class SettingController extends Controller
 	                @unlink($oldFilePath);
 	            }
 
-	            $fileName = time() . '.' . $request->$field->getClientOriginalName();
+	            $fileName = Str::random(32) . '.' . $request->$field->extension();
 	            $request->$field->move($path, $fileName);
 	            $info->$field = $fileName;
 	        }
@@ -103,6 +107,19 @@ class SettingController extends Controller
 	    
 	    $info->save();
 	    return redirect()->route('setting.create');
+	}
+
+	// logo shudhu chobi (svg na - tate script thakte pare); invoice prefix e shudhu harf/number
+	private function validateSetting(Request $request): void
+	{
+	    $request->validate([
+	        'logo'                    => 'nullable|file|image|mimes:png,jpg,jpeg,webp|max:2048',
+	        'email'                   => 'nullable|email|max:255',
+	        'sale_invoice_prefix'     => 'nullable|alpha_dash|max:20',
+	        'sale_invoice_number'     => 'nullable|digits_between:1,10',
+	        'purchase_invoice_prefix' => 'nullable|alpha_dash|max:20',
+	        'purchase_invoice_number' => 'nullable|digits_between:1,10',
+	    ]);
 	}
 
 }

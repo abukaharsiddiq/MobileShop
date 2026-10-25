@@ -59,6 +59,23 @@ class InventoryAuditService
             Product::whereNotIn('type', array_keys(Product::TYPES))->get()
                 ->map(fn ($p) => "Product #{$p->id} {$p->product_name}: type \"{$p->type}\""));
 
+        // ekoi product + RAM + ROM + color er duita stock row (NULL er karone unique dhorte parto na)
+        $duplicateVariants = DB::table('main_stocks')
+            ->select('product_id', DB::raw('GROUP_CONCAT(id) as ids'), DB::raw('SUM(quantity) as total'))
+            ->groupBy('product_id', 'ram_id', 'rom_id', 'color_id')
+            ->havingRaw('COUNT(*) > 1')
+            ->get();
+        $issues[] = $this->issue('duplicate_variant', 'Same variant stored in more than one stock row', 'critical',
+            $duplicateVariants->map(fn ($r) => "Product #{$r->product_id}: stock rows {$r->ids} (total quantity {$r->total})"));
+
+        // inactive kora product/variant e stock ache - bikri hobe na, hate dekhte hobe
+        $issues[] = $this->issue('inactive_with_stock', 'Inactive product or variant that still has stock (cannot be sold)', 'warning',
+            $stocks->filter(fn ($s) => $s->quantity > 0 && !$s->isSellable())
+                ->map(fn ($s) => "Stock #{$s->id} {$s->variantLabel()}: quantity {$s->quantity}"));
+
+        $issues[] = $this->issue('missing_sku', 'Variants without SKU (run products:backfill-sku)', 'info',
+            $stocks->filter(fn ($s) => !$s->sku)->map(fn ($s) => "Stock #{$s->id} {$s->variantLabel()}"));
+
         $ledger = DB::table('stock_movements')->select('main_stock_id', DB::raw('SUM(quantity) as total'))
             ->groupBy('main_stock_id')->pluck('total', 'main_stock_id');
         $issues[] = $this->issue('ledger_mismatch', 'Stock quantity does not match the stock movement ledger (run inventory:backfill-history once after upgrade)', 'info',

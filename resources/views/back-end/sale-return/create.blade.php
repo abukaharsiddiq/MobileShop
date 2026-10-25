@@ -48,8 +48,8 @@
                                     <tr>
                                         <th width="5%">#</th>
                                         <th width="40%">Product & Variant Details</th>
-                                        <th width="35%">Available IMEI for Return</th>
-                                        <th width="20%">Sale Price</th>
+                                        <th width="35%">IMEI / Quantity to Return</th>
+                                        <th width="20%">Refund per Unit</th>
                                     </tr>
                                 </thead>
                                 <tbody id="invoice_items">
@@ -72,6 +72,18 @@
                                             Total Refund: <span id="refund_display">0.00</span>
                                         </h3>
                                         <input type="hidden" name="total_refund" id="total_refund_input" value="0">
+                                        <small class="text-muted d-block mb-2">
+                                            The refund is first adjusted against the customer's due on this invoice; any extra is paid back.
+                                        </small>
+                                        <div class="form-group text-left">
+                                            <label class="mb-1">If money is paid back, how?</label>
+                                            <select name="refund_method" class="form-control">
+                                                <option value="Cash">Cash</option>
+                                                <option value="Bkash">Bkash</option>
+                                                <option value="Nagad">Nagad</option>
+                                                <option value="Bank">Bank</option>
+                                            </select>
+                                        </div>
                                         
                                         <button type="submit" id="submitBtn" class="btn btn-danger btn-lg btn-block" disabled onclick="return confirm('Are you sure you want to process this return?')">
                                             <i class="fa fa-undo"></i> Confirm Return
@@ -118,6 +130,17 @@ function findInvoice() {
                 if(res.sale.items.length > 0) {
                     res.sale.items.forEach((item, index) => {
                         let imeiHtml = '';
+                        let unitRefund = parseFloat(item.refund_unit_price);
+
+                        // IMEI chara item (accessory): koyta ferot dibe
+                        if(!item.imei_tracked) {
+                            imeiHtml = item.quantity > 0
+                                ? `<div class="input-group input-group-sm" style="max-width:180px">
+                                       <input type="number" name="items[${item.id}]" class="form-control return-qty" min="0" max="${item.quantity}" value="0" data-price="${unitRefund}">
+                                       <div class="input-group-append"><span class="input-group-text">of ${item.quantity}</span></div>
+                                   </div>`
+                                : '<span class="badge badge-warning">Already Returned</span>';
+                        }
                         
                         if(item.imeis123 && item.imeis123.length > 0) {
                             let count = 0; // কোয়ান্টিটি কন্ট্রোল
@@ -129,7 +152,7 @@ function findInvoice() {
                                         <div class="custom-control custom-checkbox mb-2">
                                             <input type="checkbox" name="imei_nos[]" value="${imei.imei_no}" 
                                                    class="custom-control-input imei-check" id="imei_${imei.id}" 
-                                                   data-price="${item.sale_price}">
+                                                   data-price="${unitRefund}">
                                             <label class="custom-control-label font-weight-bold" for="imei_${imei.id}">
                                                 ${imei.imei_no}
                                             </label>
@@ -157,7 +180,8 @@ function findInvoice() {
                             </td>
                             <td>${imeiHtml}</td>
                             <td class="text-right font-weight-bold text-dark">
-                                ${parseFloat(item.sale_price).toFixed(2)}
+                                ${unitRefund.toFixed(2)}
+                                ${unitRefund < parseFloat(item.sale_price) ? `<br><small class="text-muted">sold at ${parseFloat(item.sale_price).toFixed(2)}, after discount</small>` : ''}
                             </td>
                         </tr>`;
                     });
@@ -179,22 +203,31 @@ function findInvoice() {
     });
 }
 
-$(document).on('change', '.imei-check', function() {
+$(document).on('change input', '.imei-check, .return-qty', function() {
     calculateTotal();
 });
 
+// shudhu dekhanor jonno; asol refund server hishab kore
 function calculateTotal() {
     let total = 0;
-    let checkedCount = $('.imei-check:checked').length;
+    let selected = $('.imei-check:checked').length;
 
     $('.imei-check:checked').each(function() {
         total += parseFloat($(this).data('price'));
     });
 
+    $('.return-qty').each(function() {
+        let qty = Math.min(parseInt($(this).val()) || 0, parseInt($(this).attr('max')));
+        if (qty > 0) {
+            total += qty * parseFloat($(this).data('price'));
+            selected += qty;
+        }
+    });
+
     $('#refund_display').text(total.toFixed(2));
     $('#total_refund_input').val(total);
 
-    if(checkedCount > 0) {
+    if(selected > 0) {
         $('#submitBtn').prop('disabled', false);
     } else {
         $('#submitBtn').prop('disabled', true);

@@ -16,7 +16,8 @@ class Installment extends Model
         'status',
         'payment_date',
         'payment_method',
-        'note'
+        'note',
+        'received_by',
     ];
 
     // সম্পর্কের জন্য (Optional but recommended)

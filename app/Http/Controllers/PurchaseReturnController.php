@@ -11,6 +11,7 @@ use App\Models\SupplierLedger;
 use App\Models\ProductImei;
 use App\Services\ImeiService;
 use App\Services\StockService;
+use App\Services\LedgerService;
 use Brian2694\Toastr\Facades\Toastr;
 use DB;
 
@@ -20,6 +21,7 @@ class PurchaseReturnController extends Controller
     public function __construct(
         private ImeiService $imeiService,
         private StockService $stockService,
+        private LedgerService $ledger,
     ){
         $this->heading = "Purchase Return";
     }
@@ -97,7 +99,7 @@ public function showByRef($ref_no)
         'prices.*'      => 'required|numeric|min:0',
         'imeis'         => 'nullable|array',
         'imeis.*'       => 'nullable|array',
-        'grand_total'   => 'required|numeric',
+        'grand_total'   => 'nullable|numeric', // server abar hishab kore
     ]);
 
     DB::beginTransaction();
@@ -107,9 +109,11 @@ public function showByRef($ref_no)
             'supplier_id'  => $request->supplier_id,
             'return_no'    => $request->return_no,
             'return_date'  => $request->return_date,
-            'total_amount' => $request->grand_total,
+            'total_amount' => 0,
             'note'         => $request->note,
         ]);
+
+        $returnTotal = 0;
 
         foreach ($request->stock_ids as $key => $stock_id) {
             $qty = (int) $request->qtys[$key];
@@ -142,11 +146,20 @@ public function showByRef($ref_no)
                     throw new \Exception("{$label}: one or more selected IMEI are not in stock.");
                 }
 
+                // onno branch e thaka phone ei user supplier ke ferot dite parbe na
+                $otherBranch = $imeis->reject(fn ($i) => $request->user()->canAccessBranch($i->branch_id));
+                if ($otherBranch->isNotEmpty()) {
+                    throw new \Exception("{$label}: these IMEI are in another branch: " . $otherBranch->pluck('imei_no')->implode(', '));
+                }
+
                 foreach ($imeis as $imei) {
                     $imei->update(['status' => ProductImei::STATUS_RETURNED_TO_SUPPLIER]);
                     $this->imeiService->record($imei, ImeiService::PURCHASE_RETURN, $purchaseReturn, 'Returned to supplier #' . $request->supplier_id);
                 }
             }
+
+            $lineTotal = round($qty * (float) $request->prices[$key], 2);
+            $returnTotal += $lineTotal;
 
             // ৪. আইটেম ডিটেইলস সেভ
             PurchaseReturnDetail::create([
@@ -157,30 +170,24 @@ public function showByRef($ref_no)
                 'color_id'           => $stock->color_id,
                 'quantity'           => $qty,
                 'purchase_price'     => $request->prices[$key],
-                'unit_total'         => $qty * $request->prices[$key],
+                'unit_total'         => $lineTotal,
             ]);
 
             // ৫. মেইন স্টক আপডেট (ভেরিয়েন্ট অনুযায়ী কমানো)
             $this->stockService->move($stock, -$qty, StockService::PURCHASE_RETURN, $purchaseReturn);
         }
 
-        // ৬. সাপ্লায়ার লেজার ব্যালেন্স ক্যালকুলেশন এবং এন্ট্রি
-        $last_ledger = SupplierLedger::where('supplier_id', $request->supplier_id)
-                        ->orderBy('id', 'desc')
-                        ->first();
+        // ৬. মোট টাকা server e hishab (browser er grand_total na)
+        $returnTotal = round($returnTotal, 2);
+        $purchaseReturn->update(['total_amount' => $returnTotal]);
 
-        $current_balance = $last_ledger ? $last_ledger->balance : 0;
-        // যেহেতু রিটার্ন ডেবিট হচ্ছে, তাই ব্যালেন্স কমবে (Debit কলামে বসবে)
-        $new_balance = $current_balance - $request->grand_total;
-
-        SupplierLedger::create([
+        // সাপ্লায়ার লেজার: রিটার্ন মানে দেনা কমলো (Debit)
+        $this->ledger->supplierEntry([
             'supplier_id'      => $request->supplier_id,
             'date'             => $request->return_date,
             'transaction_type' => 'Purchase Return',
             'reference_no'     => $request->return_no,
-            'debit'            => $request->grand_total,
-            'credit'           => 0,
-            'balance'          => $new_balance,
+            'debit'            => $returnTotal,
             'note'             => $request->note ?? 'Items returned to supplier',
         ]);
 
@@ -201,6 +208,7 @@ public function availableImeis($stock_id)
 {
     $imeis = ProductImei::where('main_stock_id', $stock_id)
                 ->where('status', ProductImei::STATUS_IN_STOCK)
+                ->accessibleBy(request()->user())
                 ->get(['id', 'imei_no']);
 
     return response()->json($imeis);

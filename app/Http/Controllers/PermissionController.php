@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Permission;
+use Database\Seeders\PermissionSeeder;
 use Brian2694\Toastr\Facades\Toastr;
 
 class PermissionController extends Controller
@@ -63,6 +64,12 @@ class PermissionController extends Controller
     {
         $permission = Permission::findOrFail($id);
 
+        // code e bebohar kora permission er naam bodlale route er check bhenge jay; shudhu group bodlano jay
+        if ($this->isSystem($permission) && $request->name !== $permission->name) {
+            Toastr::error('This permission is used by the system and cannot be renamed.', 'Error');
+            return redirect()->route('permission.index');
+        }
+
         $request->validate([
             'name' => 'required|unique:permissions,name,'.$id,
             'group_name' => 'required|string'
@@ -82,9 +89,20 @@ class PermissionController extends Controller
     public function destroy($id)
     {
         $permission = Permission::findOrFail($id);
+
+        if ($this->isSystem($permission)) {
+            Toastr::error('This permission is used by the system and cannot be deleted.', 'Error');
+            return redirect()->route('permission.index');
+        }
+
         $permission->delete();
 
         Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);
         return redirect()->route('permission.index');
+    }
+
+    private function isSystem(Permission $permission): bool
+    {
+        return in_array($permission->name, PermissionSeeder::names(), true);
     }
 }
