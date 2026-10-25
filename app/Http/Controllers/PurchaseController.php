@@ -129,8 +129,11 @@ public function store(Request $request)
                 }
 
                 // IMEI jachai (ImeiService e shob niyom)
-                $imeiList = ProductImei::parseList($item['imeis'] ?? '');
-                $this->imeiService->assertProductRules($product, $qty, $imeiList, $product->product_name);
+                // protiti phone ekta token: "IMEI1" ba dual-SIM "IMEI1/IMEI2"
+                $devices = ProductImei::parseDevices($item['imeis'] ?? '');
+                $this->imeiService->assertProductRules($product, $qty, $devices, $product->product_name);
+                $imeiList = $this->imeiService->assertNewDevices($product, $devices, $product->product_name);
+                // puro invoice e (shob line mile) ekoi number duibar na
                 $this->imeiService->assertValidNewImeis(array_merge($seenImeis, $imeiList));
                 $seenImeis = array_merge($seenImeis, $imeiList);
                 $this->imeiService->assertNotActive($imeiList);
@@ -177,17 +180,10 @@ public function store(Request $request)
                 $this->stockService->move($stock, $qty, StockService::PURCHASE, $purchase, null, $branchId);
 
                 // IMEI save (variant ar branch shoho) + itihash
-                foreach ($imeiList as $no) {
-                    $imei = ProductImei::create([
-                        'product_id'    => $item['product_id'],
-                        'main_stock_id' => $stock->id,
-                        'branch_id'     => $branchId,
-                        'purchase_id'   => $purchase->id, // ট্র্যাক রাখার জন্য
-                        'imei_no'       => $no,
-                        'status'        => ProductImei::STATUS_IN_STOCK,
-                    ]);
-                    $this->imeiService->record($imei, ImeiService::PURCHASE, $purchase,
-                        $product->isSecondHand() ? 'Bought as ' . $product->typeLabel() : null);
+                foreach ($devices as [$imei1, $imei2]) {
+                    $this->imeiService->register($product, $stock->id, $branchId, $imei1, $imei2, ImeiService::PURCHASE, $purchase,
+                        $product->isSecondHand() ? 'Bought as ' . $product->typeLabel() : null,
+                        (int) $purchase->supplier_id, $purchase->id);
                 }
 
             }
@@ -282,12 +278,14 @@ public function show($id)
     try {
         $purchase = Purchase::with('purchaseDetails')->findOrFail($id);
 
-        // ১. এই purchase এর IMEI গুলো বিক্রি বা ফেরত হয়ে গেলে ডিলিট করা যাবে না
+        // ১. এই purchase এর IMEI গুলো বিক্রি/ফেরত/reserve/repair হয়ে গেলে ডিলিট করা যাবে না (shudhu available)
         $usedImeis = ProductImei::where('purchase_id', $purchase->id)
-            ->where('status', '!=', ProductImei::STATUS_IN_STOCK)
-            ->pluck('imei_no');
+            ->where('status', '!=', ProductImei::STATUS_AVAILABLE)
+            ->lockForUpdate()
+            ->get()
+            ->map(fn ($i) => $i->imei_no . ' (' . $i->statusText() . ')');
         if ($usedImeis->isNotEmpty()) {
-            throw new \Exception('Cannot delete! These IMEI from this purchase are already sold or returned: ' . $usedImeis->implode(', '));
+            throw new \Exception('Cannot delete! These IMEI from this purchase are no longer simply in stock: ' . $usedImeis->implode(', '));
         }
 
         // ২. স্টক অ্যাডজাস্টমেন্ট (Stock Reverse) + average purchase price আগের অবস্থায় ফেরানো

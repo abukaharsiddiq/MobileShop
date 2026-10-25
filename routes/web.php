@@ -37,6 +37,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\InstallmentCollectionController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\StockReconciliationController;
+use App\Http\Controllers\ImeiController;
 use App\Models\User;
 
 
@@ -382,7 +383,9 @@ Route::middleware(['auth'])->group(function () {
     Route::prefix('reports')->name('reports.')->group(function () {
         Route::get('/dead-stock', [StockReportController::class, 'DeadStockReport'])->name('dead.stock')->middleware('can:read stock report');
         Route::get('/stock', [StockReportController::class, 'stockReport'])->name('stock')->middleware('can:read stock report');
-        Route::get('/imei-tracking', [StockReportController::class, 'imeiReport'])->name('imei')->middleware('permission:read sales report|search imei');
+        // IMEI khoja + puro itihash; IMEI stock list (status onujayi)
+        Route::get('/imei-tracking', [ImeiController::class, 'search'])->name('imei')->middleware('permission:read sales report|search imei');
+        Route::get('/imei-stock', [ImeiController::class, 'index'])->name('imei.stock')->middleware('permission:read stock report|search imei');
         Route::get('/sales-summary', [ReportController::class, 'salesSummary'])->name('sales_summary')->middleware('can:read sales report');
         Route::get('/sales-item-wise', [ReportController::class, 'salesItemReport'])->name('sales_item')->middleware('can:read sales report');
 
@@ -400,7 +403,10 @@ Route::middleware(['auth'])->group(function () {
     /* reports */
 
 
-    /* stock reconciliation (IMEI registration / quantity correction, approval shoho) */
+    /* IMEI status: reserve, repair e pathano/ferot, damaged, thik hoye available */
+    Route::post('/imei/status/{id}', [ImeiController::class, 'changeStatus'])->name('imei.status')->middleware('can:manage imei');
+
+    /* stock reconciliation (IMEI registration / quantity correction / write-off, approval shoho) */
     Route::prefix('stock-reconciliation')->name('stock-reconciliation.')->group(function () {
         Route::get('/', [StockReconciliationController::class, 'index'])->name('index')->middleware('can:read stock adjustment');
         Route::get('/create', [StockReconciliationController::class, 'create'])->name('create')->middleware('can:create stock adjustment');

@@ -29,10 +29,16 @@ class StockAdjustmentService
             $branch = Branch::where('status', 1)->findOrFail($data['branch_id']);
 
             if ($data['type'] === StockAdjustment::TYPE_IMEI_REGISTRATION) {
+                // protiti phone ekta line: "IMEI" ba dual-SIM "IMEI1/IMEI2"
                 $imeis = ProductImei::parseList($data['imeis'] ?? '');
-                $this->validateRegistration($stock, $imeis, $data['verified_model_number'] ?? '');
-                $this->imeiService->assertNotPendingRegistration($imeis);
+                $numbers = $this->validateRegistration($stock, $imeis, $data['verified_model_number'] ?? '');
+                $this->imeiService->assertNotPendingRegistration($numbers);
                 $quantity = count($imeis);
+            } elseif ($data['type'] === StockAdjustment::TYPE_IMEI_WRITE_OFF) {
+                // haralo/churi/nosto phone: IMEI 1 ba IMEI 2 diye; stock e IMEI 1 rakha hoy
+                $devices = $this->writeOffDevices($stock, ProductImei::parseList($data['imeis'] ?? ''), false);
+                $imeis = $devices->pluck('imei_no')->all();
+                $quantity = -count($imeis);
             } else {
                 $imeis = null;
                 $quantity = (int) ($data['quantity'] ?? 0);
@@ -77,16 +83,17 @@ class StockAdjustmentService
                 // pending thakar somoy obostha bodlate pare, tai lock er bhitore abar jachai
                 $this->validateRegistration($stock, $adjustment->imeis, $adjustment->verified_model_number);
 
-                foreach ($adjustment->imeis as $imeiNo) {
-                    $imei = ProductImei::create([
-                        'product_id'    => $stock->product_id,
-                        'main_stock_id' => $stock->id,
-                        'branch_id'     => $adjustment->branch_id,
-                        'imei_no'       => $imeiNo,
-                        'status'        => ProductImei::STATUS_IN_STOCK,
-                    ]);
-                    $this->imeiService->record($imei, ImeiService::REGISTRATION, $adjustment, $adjustment->reason);
+                foreach (ProductImei::parseDevices(implode(',', $adjustment->imeis)) as [$imei1, $imei2]) {
+                    $this->imeiService->register($stock->product, $stock->id, $adjustment->branch_id, $imei1, $imei2,
+                        ImeiService::REGISTRATION, $adjustment, $adjustment->reason);
                 }
+            } elseif ($adjustment->type === StockAdjustment::TYPE_IMEI_WRITE_OFF) {
+                // pending er somoy bikri/ferot hoye gele approve hobe na
+                $devices = $this->writeOffDevices($stock, $adjustment->imeis, true);
+                foreach ($devices as $device) {
+                    $this->imeiService->writeOff($device, $adjustment, $adjustment->reason);
+                }
+                $this->stockService->move($stock, -$devices->count(), StockService::ADJUSTMENT, $adjustment, $adjustment->reason, $adjustment->branch_id);
             } else {
                 $this->validateCorrection($stock, $adjustment->quantity);
                 $this->stockService->move($stock, $adjustment->quantity, StockService::ADJUSTMENT, $adjustment, $adjustment->reason, $adjustment->branch_id);
@@ -144,10 +151,12 @@ class StockAdjustmentService
 
     public static function activeImeiCount(MainStock $stock): int
     {
-        return ProductImei::where('main_stock_id', $stock->id)->where('status', ProductImei::STATUS_IN_STOCK)->count();
+        // dokhole thaka shob (available, reserved, repair, damaged) - stock quantity te ei gulo gona
+        return ProductImei::where('main_stock_id', $stock->id)->owned()->count();
     }
 
-    private function validateRegistration(MainStock $stock, array $imeis, ?string $verifiedModel): void
+    // fere: shob IMEI number (IMEI 1 + IMEI 2)
+    private function validateRegistration(MainStock $stock, array $imeis, ?string $verifiedModel): array
     {
         $product = $stock->product;
         $label = $stock->variantLabel();
@@ -166,15 +175,43 @@ class StockAdjustmentService
             throw new \Exception('Enter at least one IMEI.');
         }
 
-        $this->imeiService->assertValidNewImeis($imeis);
+        // dual-SIM model e IMEI 1/IMEI 2; shob number 15 digit + Luhn
+        $numbers = $this->imeiService->assertNewDevices($product, ProductImei::parseDevices(implode(',', $imeis)), $label);
 
         $unregistered = self::unregisteredCount($stock);
         if (count($imeis) > $unregistered) {
             throw new \Exception("{$label} has only {$unregistered} unit(s) without IMEI, but " . count($imeis) . ' IMEI given.');
         }
 
-        $this->imeiService->assertNotActive($imeis);
-        $this->imeiService->assertNeverLeftStock($imeis);
+        $this->imeiService->assertNotActive($numbers);
+        $this->imeiService->assertNeverLeftStock($numbers);
+
+        return $numbers;
+    }
+
+    /**
+     * Write off er phone: ei variant er, dokhole (available/repair/damaged; reserved hole age unreserve).
+     */
+    private function writeOffDevices(MainStock $stock, array $numbers, bool $lock)
+    {
+        $numbers = array_values(array_unique(array_filter($numbers)));
+        if (!$numbers) {
+            throw new \Exception('Enter the IMEI of each phone to write off.');
+        }
+
+        $devices = ProductImei::where('main_stock_id', $stock->id)
+            ->where(fn ($q) => $q->whereIn('imei_no', $numbers)->orWhereIn('imei_no_2', $numbers))
+            ->whereIn('status', [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_IN_REPAIR, ProductImei::STATUS_DAMAGED])
+            ->when($lock, fn ($q) => $q->lockForUpdate())
+            ->get();
+
+        $found = $devices->flatMap(fn ($d) => [$d->imei_no, $d->imei_no_2])->filter()->all();
+        $missing = array_diff($numbers, $found);
+        if ($missing) {
+            throw new \Exception("{$stock->variantLabel()}: these IMEI are not in this variant's stock (or are reserved/sold): " . implode(', ', $missing));
+        }
+
+        return $devices->unique('id')->values();
     }
 
     private function validateCorrection(MainStock $stock, int $quantity): void

@@ -106,6 +106,11 @@
                         {{-- PHONE SPECIFICATIONS --}}
                         <fieldset id="phoneFields" class="border p-3 mb-3 bg-light">
                             <legend class="fw-bold text-primary"><i class="fas fa-mobile-alt"></i> Phone Specifications</legend>
+                            <div class="form-check mb-3">
+                                <input type="hidden" name="dual_sim" value="0">
+                                <input class="form-check-input" type="checkbox" name="dual_sim" id="dual_sim" value="1" {{ old('dual_sim', $product->dual_sim) ? 'checked' : '' }}>
+                                <label class="form-check-label fw-bold" for="dual_sim">Dual-SIM model (IMEI 1 and IMEI 2 required for each phone)</label>
+                            </div>
 
                             <div class="row">
                                 <div class="col-md-4 mb-3">

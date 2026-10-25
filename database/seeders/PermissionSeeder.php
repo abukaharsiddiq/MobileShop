@@ -77,6 +77,7 @@ class PermissionSeeder extends Seeder
             ['approve stock adjustment', 'Stock Reconciliation'],
             ['sell below cost', 'Sale'],
             ['search imei', 'IMEI'],
+            ['manage imei', 'IMEI'],      // reserve, repair, damaged
             ['access all branches', 'Branch'],
         ]);
     }

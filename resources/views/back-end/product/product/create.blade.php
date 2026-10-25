@@ -115,6 +115,11 @@
                         {{-- PHONE SPECIFICATIONS --}}
                         <fieldset id="phoneFields" class="border p-3 mb-3 bg-light">
                             <legend class="w-auto px-2 font-weight-bold text-primary"><i class="fas fa-mobile-alt"></i> Phone Specifications</legend>
+                            <div class="form-check mb-3">
+                                <input type="hidden" name="dual_sim" value="0">
+                                <input class="form-check-input" type="checkbox" name="dual_sim" id="dual_sim" value="1" {{ old('dual_sim', false) ? 'checked' : '' }}>
+                                <label class="form-check-label font-weight-bold" for="dual_sim">Dual-SIM model (IMEI 1 and IMEI 2 required for each phone)</label>
+                            </div>
                             <div class="row">
                                 <div class="col-md-4 mb-3">
                                     <label class="font-weight-bold">RAM</label>
@@ -235,7 +240,7 @@ $(document).ready(function() {
             $('#accessoryFields').hide();
         } else if(type === 'button_phone'){
             $('#phoneFields').show().find(':input').prop('disabled', true);
-            $('select[name="color_id"], textarea[name="imeis"]').prop('disabled', false);
+            $('select[name="color_id"], textarea[name="imeis"], input[name="dual_sim"]').prop('disabled', false);
             $('#accessoryFields').hide();
         } else if(type === 'accessory'){
             $('#phoneFields').hide().find(':input').prop('disabled', true);

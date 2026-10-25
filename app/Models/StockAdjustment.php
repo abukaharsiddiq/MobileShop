@@ -8,6 +8,13 @@ class StockAdjustment extends Model
 {
     const TYPE_IMEI_REGISTRATION = 'imei_registration';
     const TYPE_QUANTITY_CORRECTION = 'quantity_correction';
+    const TYPE_IMEI_WRITE_OFF = 'imei_write_off';      // haralo/churi/nosto phone stock theke bad
+
+    const TYPES = [
+        self::TYPE_IMEI_REGISTRATION   => 'IMEI Registration',
+        self::TYPE_QUANTITY_CORRECTION => 'Quantity Correction',
+        self::TYPE_IMEI_WRITE_OFF      => 'IMEI Write-off',
+    ];
 
     const STATUS_PENDING = 'pending';
     const STATUS_APPROVED = 'approved';
@@ -49,6 +56,6 @@ class StockAdjustment extends Model
 
     public function typeLabel()
     {
-        return $this->type === self::TYPE_IMEI_REGISTRATION ? 'IMEI Registration' : 'Quantity Correction';
+        return self::TYPES[$this->type] ?? $this->type;
     }
 }

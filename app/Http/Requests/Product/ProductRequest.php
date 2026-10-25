@@ -26,6 +26,8 @@ abstract class ProductRequest extends FormRequest
             // purono form e "accessory_note" naam chilo, column chilo na (lekha harato)
             'description' => $this->input('description', $this->input('accessory_note')),
             'unit'        => $this->input('unit') ?: 'pcs',
+            // checkbox: na thakle single SIM; accessory te kokhono na
+            'dual_sim'    => $this->boolean('dual_sim') && $this->input('type') !== 'accessory',
             'sku'         => $this->filled('sku') ? strtoupper(trim($this->input('sku'))) : null,
             'barcode'     => $this->filled('barcode') ? trim($this->input('barcode')) : null,
         ]);
@@ -35,6 +37,7 @@ abstract class ProductRequest extends FormRequest
     {
         return [
             'type'                => ['required', Rule::in(array_keys(Product::TYPES))],
+            'dual_sim'            => ['boolean'],
             'product_name'        => ['required', 'string', 'max:255'],
             'model_number'        => ['required', 'string', 'max:100'],
             'category_id'         => ['required', 'integer', 'exists:categories,id'],

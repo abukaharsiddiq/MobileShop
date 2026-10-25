@@ -28,7 +28,7 @@ class StockReconciliationController extends Controller
 
         // IMEI lage emon stock jekhane quantity ar registered IMEI mele na
         $discrepancies = MainStock::with(['product', 'ram', 'rom', 'color'])
-            ->withCount(['imeis as active_imei_count' => fn ($q) => $q->where('status', ProductImei::STATUS_IN_STOCK)])
+            ->withCount(['imeis as active_imei_count' => fn ($q) => $q->owned()])
             ->whereHas('product', fn ($q) => $q->where('type', '!=', 'accessory'))
             ->get()
             ->filter(fn ($s) => $s->quantity != $s->active_imei_count && ($s->product->requiresImei() || $s->active_imei_count > $s->quantity));
@@ -50,7 +50,7 @@ class StockReconciliationController extends Controller
         $title = 'New Stock Correction';
 
         $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])
-            ->withCount(['imeis as active_imei_count' => fn ($q) => $q->where('status', ProductImei::STATUS_IN_STOCK)])
+            ->withCount(['imeis as active_imei_count' => fn ($q) => $q->owned()])
             ->get();
         // branch e bandha user shudhu nijer branch er jonno request korte pare
         $branches = Branch::where('status', 1)
@@ -64,16 +64,17 @@ class StockReconciliationController extends Controller
     public function store(Request $request)
     {
         $isRegistration = $request->type === StockAdjustment::TYPE_IMEI_REGISTRATION;
+        $isCorrection = $request->type === StockAdjustment::TYPE_QUANTITY_CORRECTION;
 
         $request->validate([
-            'type'                  => 'required|in:' . StockAdjustment::TYPE_IMEI_REGISTRATION . ',' . StockAdjustment::TYPE_QUANTITY_CORRECTION,
+            'type'                  => 'required|in:' . implode(',', array_keys(StockAdjustment::TYPES)),
             'main_stock_id'         => 'required|exists:main_stocks,id',
             'branch_id'             => 'required|exists:branches,id',
             'reason'                => 'required|string|min:10|max:2000',
-            'imeis'                 => $isRegistration ? 'required|string' : 'nullable',
+            'imeis'                 => $isCorrection ? 'nullable' : 'required|string',
             'verified_model_number' => $isRegistration ? 'required|string|max:255' : 'nullable',
             'physically_verified'   => $isRegistration ? 'accepted' : 'nullable',
-            'quantity'              => $isRegistration ? 'nullable' : 'required|integer|not_in:0',
+            'quantity'              => $isCorrection ? 'required|integer|not_in:0' : 'nullable',
         ], [
             'physically_verified.accepted' => 'Confirm that you have the physical devices and checked each IMEI.',
         ]);

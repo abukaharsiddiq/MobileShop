@@ -438,6 +438,24 @@
             </li>
         @endif
 
+        {{-- IMEI khoja/itihash ar status onujayi list --}}
+        @if($isAdmin || auth()->user()->hasAnyPermission(['search imei', 'read sales report']))
+            <li class="nav-item">
+                <a href="{{ route('reports.imei') }}" class="nav-link {{ request()->routeIs('reports.imei') ? 'active' : '' }}">
+                    <i class="fas fa-mobile-alt nav-icon"></i>
+                    <p>IMEI Search &amp; History</p>
+                </a>
+            </li>
+        @endif
+        @if($isAdmin || auth()->user()->hasAnyPermission(['search imei', 'read stock report']))
+            <li class="nav-item">
+                <a href="{{ route('reports.imei.stock') }}" class="nav-link {{ request()->routeIs('reports.imei.stock') ? 'active' : '' }}">
+                    <i class="fas fa-list-ol nav-icon"></i>
+                    <p>IMEI Stock List</p>
+                </a>
+            </li>
+        @endif
+
         @if($isAdmin || auth()->user()->hasAnyPermission(['read stock report', 'read supplier report', 'read sales report', 'read customer report', 'read expense report']))
             <li class="nav-item {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'active' : '' }}">

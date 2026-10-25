@@ -8,6 +8,7 @@ class Product extends Model
 {
     protected $fillable = [
         'type',           // mobile / accessory
+        'dual_sim',       // IMEI 1 + IMEI 2
         'product_name',
         'model_number',
         'barcode',
@@ -33,6 +34,7 @@ class Product extends Model
     {
         return [
             'status' => 'boolean',
+            'dual_sim' => 'boolean',
             'low_stock_threshold' => 'integer',
             'warranty_months' => 'integer',
         ];
@@ -110,9 +112,17 @@ class Product extends Model
     }
 
     // Smart phone (notun, used, refurbished) kena-becha IMEI chara hobe na
+    // Smart phone e shob shomoy; button phone e dokaner setting (config/imei.php) onujayi
     public function requiresImei()
     {
-        return in_array($this->type, self::IMEI_REQUIRED_TYPES);
+        return in_array($this->type, self::IMEI_REQUIRED_TYPES)
+            || ($this->type === 'button_phone' && config('imei.button_phone_required'));
+    }
+
+    // dual-SIM model e IMEI 2 lagbe; single SIM e IMEI 2 deya jay na
+    public function requiresSecondImei(): bool
+    {
+        return $this->allowsImei() && (bool) $this->dual_sim;
     }
 
     public function isSecondHand()

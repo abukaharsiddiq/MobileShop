@@ -250,7 +250,8 @@
                 imeiSelect.empty();
                 if (data.length > 0) {
                     $.each(data, function(i, item) {
-                        imeiSelect.append(`<option value="${item.id}">${item.imei_no}</option>`);
+                        // text hisebe (IMEI 2 / reserved shoho)
+                        imeiSelect.append(new Option(item.label || item.imei_no, item.id));
                     });
                     tr.find('.imei-div').show();
                     tr.find('.qty').attr('readonly', true).val(0);

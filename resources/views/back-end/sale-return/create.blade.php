@@ -154,8 +154,12 @@ function findInvoice() {
                                                    class="custom-control-input imei-check" id="imei_${imei.id}" 
                                                    data-price="${unitRefund}">
                                             <label class="custom-control-label font-weight-bold" for="imei_${imei.id}">
-                                                ${imei.imei_no}
+                                                ${imei.imei_no}${imei.imei_no_2 ? ' / ' + imei.imei_no_2 : ''}
                                             </label>
+                                            <select name="imei_condition[${imei.imei_no}]" class="form-control form-control-sm d-inline-block w-auto ml-2">
+                                                <option value="available">Good - back to stock</option>
+                                                <option value="damaged">Faulty - mark damaged</option>
+                                            </select>
                                         </div>`;
                                     
                                     alreadyShownImeis.push(imei.imei_no);
