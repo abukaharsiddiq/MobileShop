@@ -127,9 +127,7 @@ public function showByRef($ref_no)
 
             // ৩. IMEI: এই variant এর stock এ IMEI থাকলে কোন ফোনগুলো ফেরত যাচ্ছে সেটা বাছাই করতে হবে
             $imeiIds = array_values(array_unique(array_filter((array) ($request->imeis[$key] ?? []))));
-            $hasImeiInStock = ProductImei::where('main_stock_id', $stock->id)
-                ->where('status', ProductImei::STATUS_IN_STOCK)
-                ->exists();
+            $hasImeiInStock = ProductImei::where('main_stock_id', $stock->id)->owned()->exists();
 
             if (($stock->product->requiresImei() || $hasImeiInStock) && count($imeiIds) != $qty) {
                 throw new \Exception("{$label}: please select exactly {$qty} IMEI to return.");
@@ -138,12 +136,11 @@ public function showByRef($ref_no)
             if (count($imeiIds) > 0) {
                 $imeis = ProductImei::whereIn('id', $imeiIds)
                     ->where('main_stock_id', $stock->id)
-                    ->where('status', ProductImei::STATUS_IN_STOCK)
                     ->lockForUpdate()
                     ->get();
 
                 if ($imeis->count() != count($imeiIds)) {
-                    throw new \Exception("{$label}: one or more selected IMEI are not in stock.");
+                    throw new \Exception("{$label}: one or more selected IMEI do not belong to this product variant.");
                 }
 
                 // onno branch e thaka phone ei user supplier ke ferot dite parbe na
@@ -152,9 +149,9 @@ public function showByRef($ref_no)
                     throw new \Exception("{$label}: these IMEI are in another branch: " . $otherBranch->pluck('imei_no')->implode(', '));
                 }
 
+                // dokhole thakte hobe (available/repair/damaged, reserved na), ar ei supplier thekei kena
                 foreach ($imeis as $imei) {
-                    $imei->update(['status' => ProductImei::STATUS_RETURNED_TO_SUPPLIER]);
-                    $this->imeiService->record($imei, ImeiService::PURCHASE_RETURN, $purchaseReturn, 'Returned to supplier #' . $request->supplier_id);
+                    $this->imeiService->returnToSupplier($imei, $purchaseReturn, (int) $request->supplier_id);
                 }
             }
 
@@ -206,10 +203,20 @@ public function showByRef($ref_no)
 // Return form: ei variant er stock e thaka IMEI
 public function availableImeis($stock_id)
 {
-    $imeis = ProductImei::where('main_stock_id', $stock_id)
-                ->where('status', ProductImei::STATUS_IN_STOCK)
+    // dokhole thaka (reserved chara) phone; damaged/repair o supplier ke ferot jay
+    $imeis = ProductImei::with('purchase.supplier')
+                ->where('main_stock_id', $stock_id)
+                ->whereIn('status', [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_IN_REPAIR, ProductImei::STATUS_DAMAGED])
                 ->accessibleBy(request()->user())
-                ->get(['id', 'imei_no']);
+                ->get()
+                ->map(fn ($i) => [
+                    'id'          => $i->id,
+                    'imei_no'     => $i->imei_no,
+                    'supplier_id' => $i->purchase->supplier_id ?? null,
+                    'label'       => $i->numbersLabel()
+                        . ((int) $i->status !== ProductImei::STATUS_AVAILABLE ? ' (' . $i->statusText() . ')' : '')
+                        . ($i->purchase?->supplier ? ' - ' . $i->purchase->supplier->name : ''),
+                ]);
 
     return response()->json($imeis);
 }

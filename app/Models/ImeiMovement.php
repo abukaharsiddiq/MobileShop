@@ -10,8 +10,9 @@ class ImeiMovement extends Model
     const UPDATED_AT = null;
 
     protected $fillable = [
-        'imei_no', 'product_imei_id', 'product_id', 'main_stock_id', 'branch_id', 'event',
-        'status_after', 'reference_type', 'reference_id', 'reference_no', 'user_id', 'note',
+        'imei_no', 'imei_no_2', 'product_imei_id', 'product_id', 'main_stock_id', 'branch_id',
+        'supplier_id', 'customer_id', 'event', 'status_after', 'reference_type', 'reference_id',
+        'reference_no', 'user_id', 'note',
         'created_at', // backfill e purono tarikh rakhar jonno
     ];
 
@@ -23,5 +24,20 @@ class ImeiMovement extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function product()
+    {
+        return $this->belongsTo(Product::class);
     }
 }

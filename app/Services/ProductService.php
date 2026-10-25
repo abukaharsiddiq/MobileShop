@@ -17,7 +17,7 @@ class ProductService
     public function __construct(private VariantService $variants) {}
 
     public const MASTER_FIELDS = [
-        'type', 'product_name', 'model_number', 'category_id', 'brand_id', 'ram_id', 'rom_id', 'color_id',
+        'type', 'dual_sim', 'product_name', 'model_number', 'category_id', 'brand_id', 'ram_id', 'rom_id', 'color_id',
         'purchase_price', 'sale_price', 'low_stock_threshold', 'warranty_months', 'description', 'unit',
     ];
 
@@ -120,7 +120,7 @@ class ProductService
         }
 
         // accessory te bodlano: IMEI shoho phone ba RAM/storage wala variant thakle na
-        if ($product->imeis()->where('status', ProductImei::STATUS_IN_STOCK)->exists()) {
+        if ($product->imeis()->owned()->exists()) {
             throw new \Exception('This product has devices with IMEI in stock and cannot be changed to an accessory.');
         }
         if (MainStock::where('product_id', $product->id)->where(fn ($q) => $q->whereNotNull('ram_id')->orWhereNotNull('rom_id'))->exists()) {

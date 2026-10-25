@@ -71,8 +71,9 @@ class AdminController extends Controller
     $imei = $request->imei;
 
     // Ekta IMEI ekadhikbar thakte pare (bikri howa phone abar kena hole); shesh record tai ekhonkar obostha
+    // IMEI 1 ba IMEI 2
     $item = ProductImei::with(['product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'sale'])
-        ->where('imei_no', $imei)
+        ->whereNumber((string) $imei)
         ->latest('id')
         ->first();
 
@@ -84,8 +85,8 @@ class AdminController extends Controller
 
         $saleInfo = match ((int) $item->status) {
             ProductImei::STATUS_SOLD => 'Invoice: ' . ($item->sale->invoice_no ?? ('#' . $item->sale_id)),
-            ProductImei::STATUS_RETURNED_TO_SUPPLIER => 'Returned to supplier',
-            default => 'Ready to Sell',
+            ProductImei::STATUS_AVAILABLE => 'Ready to Sell',
+            default => $item->statusText() . ($item->status_note ? ': ' . $item->status_note : ''),
         };
 
         return response()->json([
@@ -93,8 +94,9 @@ class AdminController extends Controller
             'data' => [
                 'product_name' => $item->product->product_name ?? 'N/A',
                 'variant'      => $variant,
-                'current_status' => (int) $item->status, // 0 sold, 1 in stock, 2 returned to supplier
+                'current_status' => (int) $item->status, // ProductImei::STATUSES
                 'status_text'  => $item->statusText(),
+                'badge'        => $item->statusBadge(),
                 'sale_info'    => $saleInfo,
             ]
         ]);

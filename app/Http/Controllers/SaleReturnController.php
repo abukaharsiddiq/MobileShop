@@ -66,7 +66,7 @@ public function findInvoiceForReturn(Request $request)
             $item->imeis123 = ProductImei::where('sale_detail_id', $item->id)
                 ->where('sale_id', $sale->id)
                 ->where('status', ProductImei::STATUS_SOLD)
-                ->get(['id', 'imei_no']);
+                ->get(['id', 'imei_no', 'imei_no_2']);
 
             $item->imei_tracked = $item->imeis123->isNotEmpty() || $item->product->requiresImei();
             // ekta unit ferot dile koto taka ferot (item discount ar invoice discount er bhag bad diye)
@@ -87,6 +87,8 @@ public function store(Request $request)
         'imei_nos'      => 'nullable|array',
         'items'         => 'nullable|array',      // [sale_detail_id => qty] IMEI chara item (accessory)
         'items.*'       => 'nullable|integer|min:0',
+        'imei_condition'   => 'nullable|array',
+        'imei_condition.*' => 'in:available,damaged',
         'refund_method' => 'nullable|string|max:50',
         'note'          => 'nullable|string',
     ]);
@@ -100,9 +102,11 @@ public function store(Request $request)
         // ১. kon line theke koyta ferot
         $lines = []; // detail_id => ['qty' => k, 'imeis' => [...]]
 
-        foreach ((array) $request->imei_nos as $imei_no) {
-            // shudhu ei invoice e bikri howa IMEI ferot neya jabe
-            $imei = ProductImei::where('imei_no', $imei_no)
+        $seenDevices = [];
+        $conditions = []; // device id => available | damaged
+        foreach (array_unique((array) $request->imei_nos) as $imei_no) {
+            // shudhu ei invoice e bikri howa IMEI ferot neya jabe (IMEI 1 ba IMEI 2)
+            $imei = ProductImei::whereNumber((string) $imei_no)
                 ->where('sale_id', $sale->id)
                 ->where('status', ProductImei::STATUS_SOLD)
                 ->lockForUpdate()
@@ -111,6 +115,15 @@ public function store(Request $request)
             if (!$imei || !$details->has($imei->sale_detail_id)) {
                 throw new \Exception("IMEI {$imei_no} was not sold in invoice {$sale->invoice_no}.");
             }
+            // ekoi phone er IMEI 1 ar IMEI 2 duitai dile ekbar-i ferot
+            if (isset($seenDevices[$imei->id])) {
+                continue;
+            }
+            $seenDevices[$imei->id] = true;
+
+            // ferot asha phone thik ache (available) na nosto (damaged - abar bikri hobe na)
+            $conditions[$imei->id] = ($request->imei_condition[$imei_no] ?? $request->imei_condition[$imei->imei_no] ?? 'available') === 'damaged'
+                ? ProductImei::STATUS_DAMAGED : ProductImei::STATUS_AVAILABLE;
 
             $lines[$imei->sale_detail_id]['imeis'][] = $imei;
             $lines[$imei->sale_detail_id]['qty'] = ($lines[$imei->sale_detail_id]['qty'] ?? 0) + 1;
@@ -199,17 +212,12 @@ public function store(Request $request)
                         'refund_price'   => $unitRefund,
                     ]);
 
-                    // ekoi IMEI onno kono record e active thakle (clone/bhul entry) ferot neya jabe na
-                    $this->imeiService->assertNotActive([$imei->imei_no]);
-
-                    // IMEI স্ট্যাটাস রিসেট (purono sale er tottho imei_movements e thake)
-                    $imei->update([
-                        'status'         => ProductImei::STATUS_IN_STOCK,
-                        'sale_id'        => null,
-                        'sale_detail_id' => null
-                    ]);
-                    $this->imeiService->record($imei, ImeiService::SALE_RETURN, $saleReturn,
-                        "Returned by customer from invoice {$sale->invoice_no}");
+                    // status available/damaged; ekoi IMEI onno record e dokhole thakle ferot hoy na;
+                    // purono sale er tottho imei_movements e thake
+                    $condition = $conditions[$imei->id];
+                    $this->imeiService->releaseFromSale($imei, $saleReturn, $condition, (int) $sale->customer_id,
+                        "Returned by customer from invoice {$sale->invoice_no}"
+                        . ($condition === ProductImei::STATUS_DAMAGED ? ' (faulty)' : ''));
                 }
             } else {
                 SaleReturnItem::create([

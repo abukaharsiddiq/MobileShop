@@ -72,7 +72,14 @@
                         <input class="form-check-input" type="radio" name="type" id="typeCorrection" value="quantity_correction"
                             {{ old('type') == 'quantity_correction' ? 'checked' : '' }}>
                         <label class="form-check-label" for="typeCorrection">
-                            <strong>Correct quantity</strong> - the stock number is wrong (test data, counting error, lost/damaged); no device record is created
+                            <strong>Correct quantity</strong> - the stock number is wrong (test data, counting error); no device record is created
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="type" id="typeWriteOff" value="imei_write_off"
+                            {{ old('type') == 'imei_write_off' ? 'checked' : '' }}>
+                        <label class="form-check-label" for="typeWriteOff">
+                            <strong>Write off phones</strong> - registered phones that were lost, stolen or destroyed; they leave stock and keep their history
                         </label>
                     </div>
                 </div>
@@ -80,8 +87,8 @@
                 <div id="registrationFields">
                     <div class="row">
                         <div class="col-md-6 form-group">
-                            <label class="font-weight-bold">IMEI numbers * <small class="text-muted">(one per line, read from each device - *#06# or the box)</small></label>
-                            <textarea name="imeis" class="form-control" rows="5" placeholder="15-digit IMEI">{{ old('imeis') }}</textarea>
+                            <label class="font-weight-bold">IMEI numbers * <small class="text-muted">(one phone per line, read from each device - *#06# or the box; dual-SIM: IMEI1/IMEI2)</small></label>
+                            <textarea name="imeis" class="form-control" rows="5" placeholder="15-digit IMEI">{{ old('type', 'imei_registration') == 'imei_registration' ? old('imeis') : '' }}</textarea>
                         </div>
                         <div class="col-md-6 form-group">
                             <label class="font-weight-bold">Model number printed on the device *</label>
@@ -96,6 +103,16 @@
                                     I have the physical devices and checked each IMEI on the device itself.
                                 </label>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="writeOffFields" style="display:none">
+                    <div class="row">
+                        <div class="col-md-6 form-group">
+                            <label class="font-weight-bold">IMEI of the phones to write off * <small class="text-muted">(IMEI 1 or IMEI 2, one per line)</small></label>
+                            <textarea name="imeis" class="form-control" rows="4" placeholder="15-digit IMEI">{{ old('type') == 'imei_write_off' ? old('imeis') : '' }}</textarea>
+                            <small class="text-muted">Only phones of the selected variant that are Available, In Repair or Damaged. Unreserve a reserved phone first.</small>
                         </div>
                     </div>
                 </div>
@@ -134,9 +151,12 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         function toggleType() {
-            let registration = $('#typeRegistration').is(':checked');
-            $('#registrationFields').toggle(registration);
-            $('#correctionFields').toggle(!registration);
+            let type = $('input[name="type"]:checked').val();
+            // lukano section er input pathano hoy na (duita "imeis" textarea ache)
+            [['#registrationFields', 'imei_registration'], ['#writeOffFields', 'imei_write_off'], ['#correctionFields', 'quantity_correction']]
+                .forEach(([section, value]) => {
+                    $(section).toggle(type === value).find(':input').prop('disabled', type !== value);
+                });
         }
 
         function showStockInfo() {

@@ -16,16 +16,27 @@ class InventoryAuditService
     {
         $issues = [];
 
-        $duplicates = ProductImei::select('imei_no', DB::raw('COUNT(*) as total'))
-            ->where('status', ProductImei::STATUS_IN_STOCK)
-            ->groupBy('imei_no')
+        // dokhole thaka phone er IMEI 1 + IMEI 2 mile ekoi number duibar
+        $owned = ProductImei::whereIn('status', ProductImei::OWNED_STATUSES);
+        $numbers = DB::query()
+            ->fromSub((clone $owned)->select('imei_no as number')
+                ->unionAll((clone $owned)->whereNotNull('imei_no_2')->select('imei_no_2 as number')), 'n')
+            ->select('number', DB::raw('COUNT(*) as total'))
+            ->groupBy('number')
             ->having('total', '>', 1)
             ->get();
         $issues[] = $this->issue('duplicate_active', 'Same IMEI active in stock more than once', 'critical',
-            $duplicates->map(fn ($r) => "{$r->imei_no} ({$r->total} active records)"));
+            $numbers->map(fn ($r) => "{$r->number} ({$r->total} active records)"));
+
+        // registry (product_imei_numbers) device er sathe mile na - IMEI model bypass kore lekha hoyechhe
+        $unsynced = ProductImei::whereIn('status', ProductImei::OWNED_STATUSES)
+            ->whereDoesntHave('numbers', fn ($q) => $q->where('slot', 1)->where('is_active', 1))
+            ->get(['id', 'imei_no']);
+        $issues[] = $this->issue('imei_registry', 'IMEI in stock missing from the IMEI number registry', 'warning',
+            $unsynced->map(fn ($i) => "{$i->imei_no} (record #{$i->id})"));
 
         $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])
-            ->withCount(['imeis as active_imei_count' => fn ($q) => $q->where('status', ProductImei::STATUS_IN_STOCK)])
+            ->withCount(['imeis as active_imei_count' => fn ($q) => $q->owned()])
             ->get();
 
         $issues[] = $this->issue('unregistered_imei', 'Smartphone stock without registered IMEI (cannot be sold until fixed)', 'critical',
@@ -42,7 +53,7 @@ class InventoryAuditService
                 ->map(fn ($s) => "Stock #{$s->id} {$s->variantLabel()}: quantity {$s->quantity}"));
 
         $issues[] = $this->issue('accessory_with_imei', 'Accessory with IMEI in stock', 'warning',
-            ProductImei::with('product')->where('status', ProductImei::STATUS_IN_STOCK)
+            ProductImei::with('product')->owned()
                 ->whereHas('product', fn ($q) => $q->where('type', 'accessory'))
                 ->get()->map(fn ($i) => "{$i->imei_no} ({$i->product->product_name})"));
 

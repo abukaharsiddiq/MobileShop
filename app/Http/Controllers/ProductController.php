@@ -71,7 +71,7 @@ class ProductController extends Controller
         $title = 'Product Details';
         $product = Product::with(['category', 'brand'])->findOrFail($id);
         $variants = MainStock::with(['ram', 'rom', 'color', 'product'])
-            ->withCount(['imeis as in_stock_imeis' => fn ($q) => $q->where('status', 1)])
+            ->withCount(['imeis as in_stock_imeis' => fn ($q) => $q->owned()])
             ->where('product_id', $product->id)
             ->orderBy('id')
             ->get();

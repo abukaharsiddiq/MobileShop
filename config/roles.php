@@ -39,7 +39,7 @@ return [
             'create attendance', 'read attendance',
             'read stock report', 'read sales report', 'read supplier report', 'read customer report', 'read expense report',
             'read stock adjustment', 'create stock adjustment', 'approve stock adjustment',
-            'search imei', 'sell below cost',
+            'search imei', 'manage imei', 'sell below cost',
         ],
     ],
 
@@ -74,7 +74,7 @@ return [
         'home'  => 'sales.dashboard',
         'permissions' => [
             'read product', 'read customer',
-            'read stock report', 'search imei',
+            'read stock report', 'search imei', 'manage imei',   // repair e pathano/ferot
             'read stock adjustment', 'create stock adjustment',
         ],
     ],

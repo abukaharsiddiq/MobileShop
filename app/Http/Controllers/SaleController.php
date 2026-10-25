@@ -166,15 +166,21 @@ public function store(Request $request)
 
             $imeis = collect();
             if (count($imeiIds) > 0) {
-                // IMEI ta registered, stock e ache ar ei variant er kina
+                // IMEI ta ei variant er kina (lock shoho, jate duijon ekshathe ekoi phone bikri na kore)
                 $imeis = ProductImei::whereIn('id', $imeiIds)
                     ->where('main_stock_id', $stock->id)
-                    ->where('status', ProductImei::STATUS_IN_STOCK)
                     ->lockForUpdate()
                     ->get();
 
                 if ($imeis->count() != count($imeiIds)) {
-                    throw new \Exception("{$label}: one or more selected IMEI are already sold or do not belong to this product.");
+                    throw new \Exception("{$label}: one or more selected IMEI do not belong to this product variant.");
+                }
+
+                // available hote hobe (ba ei customer er jonno reserved); sold/repair/damaged na
+                $notSellable = $imeis->reject(fn ($i) => $i->isSellableTo((int) $request->customer_id));
+                if ($notSellable->isNotEmpty()) {
+                    throw new \Exception("{$label}: these IMEI cannot be sold: "
+                        . $notSellable->map(fn ($i) => "{$i->imei_no} ({$i->statusText()})")->implode(', '));
                 }
 
                 // onno branch e thaka phone ei user bikri korte parbe na
@@ -215,12 +221,7 @@ public function store(Request $request)
             $totalCost += $qty * $cost;
 
             foreach ($imeis as $imei) {
-                $imei->update([
-                    'status'         => ProductImei::STATUS_SOLD,
-                    'sale_id'        => $sale->id,
-                    'sale_detail_id' => $item->id,
-                ]);
-                $this->imeiService->record($imei, ImeiService::SALE, $sale, 'Sold to customer #' . $sale->customer_id);
+                $this->imeiService->sell($imei, $sale, $item->id, (int) $sale->customer_id);
             }
 
             $this->stockService->move($stock, -$qty, StockService::SALE, $sale);
@@ -291,11 +292,19 @@ public function store(Request $request)
 
 public function getAvailableImeis($stock_id)
 {
-    // shudhu ei variant er stock e thaka IMEI, user er branch er
-    $imeis = ProductImei::where('main_stock_id', $stock_id)
-                ->where('status', ProductImei::STATUS_IN_STOCK)
+    // shudhu ei variant er available (ar reserved - shudhu oi customer ke bikri jay) IMEI, user er branch er
+    $imeis = ProductImei::with('reservedCustomer')
+                ->where('main_stock_id', $stock_id)
+                ->whereIn('status', [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_RESERVED])
                 ->accessibleBy(request()->user())
-                ->get(['id', 'imei_no']);
+                ->orderBy('status')
+                ->get()
+                ->map(fn ($i) => [
+                    'id'      => $i->id,
+                    'imei_no' => $i->imei_no,
+                    'label'   => $i->numbersLabel() . ((int) $i->status === ProductImei::STATUS_RESERVED
+                        ? ' (reserved: ' . ($i->reservedCustomer->name ?? 'customer') . ')' : ''),
+                ]);
 
     return response()->json($imeis);
 }
@@ -466,8 +475,9 @@ public function findByImei($imei_no)
 {
     // আপনার স্টোক টেবিল থেকে IMEI টি খুঁজুন
     // নিশ্চিত করুন আপনার Imei মডেলে product_id আছে
-    $imei = ProductImei::where('imei_no', $imei_no)
-                ->where('status', ProductImei::STATUS_IN_STOCK) // শুধু স্টোকে থাকা আইটেম
+    // IMEI 1 ba IMEI 2 je kono ta scan korle
+    $imei = ProductImei::whereNumber($imei_no)
+                ->whereIn('status', [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_RESERVED]) // bikri hote pare emon
                 ->whereNotNull('main_stock_id')
                 ->accessibleBy(request()->user())
                 ->latest('id')

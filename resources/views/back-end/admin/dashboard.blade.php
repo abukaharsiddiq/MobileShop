@@ -236,7 +236,7 @@ $(document).ready(function() {
 			    
 			    if(response.status == 'success') {
 			        let data = response.data;
-			        let badgeClass = data.current_status == 1 ? 'badge-success' : (data.current_status == 2 ? 'badge-warning' : 'badge-danger');
+			        let badgeClass = 'badge-' + (data.badge || 'secondary');
 			        
 			        let html = `
 			            <div class="p-2">

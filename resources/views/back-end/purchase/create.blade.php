@@ -164,6 +164,7 @@
             </div>
             <div class="modal-body">
                 <textarea id="imei_input_field" class="form-control" rows="10" placeholder="Scan here..."></textarea>
+                <small class="text-muted d-block">One phone per line. Dual-SIM model: <code>IMEI1/IMEI2</code> on the same line.</small>
                 <small class="text-muted">Total Entered: <span id="imei_count">0</span></small>
                 <input type="hidden" id="current_row_id">
             </div>
