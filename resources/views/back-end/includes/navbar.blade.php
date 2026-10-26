@@ -36,7 +36,7 @@
         @if($isAdmin || auth()->user()->hasAnyPermission(['create category', 'read category', 'create brand', 'read brand', 'create product', 'read product']))
             <li class="nav-item {{ request()->routeIs('category.*','brand.*','product.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('category.*','brand.*','product.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-mobile-alt"></i>
                     <p>
                         Product Management
                         <i class="fas fa-angle-left right"></i>
@@ -155,7 +155,7 @@
         @if($isAdmin || auth()->user()->hasAnyPermission(['read ram', 'read rom', 'read color']))
             <li class="nav-item {{ request()->routeIs('ram.*','rom.*','color.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('ram.*','rom.*','color.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-tags"></i>
                     <p>
                         Attributes
                         <i class="fas fa-angle-left right"></i>
@@ -212,7 +212,7 @@
         @if($isAdmin || auth()->user()->hasAnyPermission(['create supplier', 'read supplier', 'create purchase', 'read purchase', 'create purchase return', 'read purchase return']))
             <li class="nav-item {{ request()->routeIs('purchase.*','supplier.*','purchase-return.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('purchase.*','supplier.*','purchase-return.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-truck-loading"></i>
                     <p>
                         Purchase
                         <i class="fas fa-angle-left right"></i>
@@ -325,7 +325,7 @@
 @if($isAdmin || auth()->user()->hasAnyPermission(['create customer','read customer','create sale','read sale', 'create return', 'read return']))
     <li class="nav-item {{ request()->routeIs('sale.*','customer.*', 'sale-return.*') ? 'menu-open' : '' }}">
         <a href="#" class="nav-link {{ request()->routeIs('sale.*','customer.*', 'sale-return.*') ? 'active' : '' }}">
-            <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+            <i class="nav-icon fas fa-cash-register"></i>
             <p>
                 Sale
                 <i class="fas fa-angle-left right"></i>
@@ -465,7 +465,7 @@
         @if($isAdmin || auth()->user()->hasAnyPermission(['read stock report', 'read supplier report', 'read sales report', 'read customer report', 'read expense report']))
             <li class="nav-item {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-chart-pie"></i>
                     <p>
                         Report
                         <i class="fas fa-angle-left right"></i>
@@ -655,7 +655,7 @@
         @if($user->role == 'admin' || auth()->user()->can('read warranty'))
             <li class="nav-item">
                 <a href="{{ route('warranty.index') }}" class="nav-link {{ request()->routeIs('warranty.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-shield-alt"></i>
                     <p>Warranty</p>
                 </a>
             </li>
@@ -666,7 +666,7 @@
         @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['open cash session', 'read cash closing']))
             <li class="nav-item">
                 <a href="{{ route('cash-closing.index') }}" class="nav-link {{ request()->routeIs('cash-closing.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-money-bill-wave"></i>
                     <p>Cash Closing</p>
                 </a>
             </li>
@@ -678,7 +678,7 @@
         @if($isAdmin || auth()->user()->hasAnyPermission(['read accounts', 'read finance report', 'reconcile account', 'manage accounts']))
             <li class="nav-item {{ request()->routeIs('finance.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('finance.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-landmark"></i>
                     <p>Accounts & Finance <i class="fas fa-angle-left right"></i></p>
                 </a>
                 <ul class="nav nav-treeview">
@@ -773,7 +773,7 @@
         @if($isAdmin || auth()->user()->hasAnyPermission(['create expense', 'read expense', 'create expense category', 'read expense category']))
             <li class="nav-item {{ request()->routeIs('expense.*','expense-category.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('expense.*','expense-category.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-wallet"></i>
                     <p>
                         Expense Management
                         <i class="fas fa-angle-left right"></i>
@@ -861,7 +861,7 @@
         @if($isAdmin)
             <li class="nav-item {{ request()->routeIs('salesman.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('salesman.*') ? 'active' : '' }}">
-                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <i class="nav-icon fas fa-user-tie"></i>
                     <p>
                         Employee Management
                         <i class="fas fa-angle-left right"></i>
@@ -912,7 +912,7 @@
        @if($user->role=='admin')
        <li class="nav-item {{ request()->routeIs('permission.*','salesman-permission.*') ? 'menu-open' : '' }}">
             <a href="#" class="nav-link {{ request()->routeIs('permission.*','salesman-permission.*') ? 'active' : '' }}">
-                <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                <i class="nav-icon fas fa-user-shield"></i>
                 <p>
                     Permission Management
                     <i class="fas fa-angle-left right"></i>
@@ -1056,7 +1056,7 @@
             @if($user->isAdmin())
             <li class="nav-item {{ $settingsActive ? 'menu-open' : '' }}">
               <a href="#" class="nav-link {{ $settingsActive ? 'active' : '' }}">
-                <img src="{{ asset('/') }}back-end/icon/settings.png" class="menuImage">
+                <i class="nav-icon fas fa-cog"></i>
                 <p>
                   Settings
                   <i class="fas fa-angle-left right"></i>
@@ -1084,7 +1084,7 @@
 
              <li class="nav-item">
             <a href="{{ route('profile.change.password') }}" class="nav-link">
-              <img src="{{ asset('/') }}back-end/icon/password.jpg" class="menuImage">
+              <i class="nav-icon fas fa-lock"></i>
               <p>
                 Change Password
               </p>
@@ -1094,7 +1094,7 @@
         <!-- Logout -->
         <li class="nav-item">
             <a href="{{ route('logout') }}" onclick="event.preventDefault(); document.getElementById('logout-form').submit();" class="nav-link">
-                <i class="nav-icon fas fa-key"></i>
+                <i class="nav-icon fas fa-sign-out-alt"></i>
                 <p>Logout</p>
             </a>
             <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">@csrf</form>
