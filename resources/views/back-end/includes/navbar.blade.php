@@ -651,6 +651,17 @@
         <!-- ======= Report  ========== -->
 
 
+       <!--  ======== Warranty ========= -->
+        @if($user->role == 'admin' || auth()->user()->can('read warranty'))
+            <li class="nav-item">
+                <a href="{{ route('warranty.index') }}" class="nav-link {{ request()->routeIs('warranty.*') ? 'active' : '' }}">
+                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <p>Warranty</p>
+                </a>
+            </li>
+        @endif
+       <!--  ======== Warranty ========= -->
+
        <!--  ======== Cash Closing ========= -->
         @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['open cash session', 'read cash closing']))
             <li class="nav-item">

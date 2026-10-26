@@ -49,7 +49,8 @@ use Illuminate\Support\Str;
 class FinancePostingService
 {
     // StockService er ei movement gulo kono document (sale/purchase/return) er bahire stock er dam bodlay
-    const VALUE_MOVEMENTS = [StockService::OPENING, StockService::ADJUSTMENT, StockService::DAMAGED, StockService::LOST, StockService::STOCK_COUNT];
+    const VALUE_MOVEMENTS = [StockService::OPENING, StockService::ADJUSTMENT, StockService::DAMAGED, StockService::LOST, StockService::STOCK_COUNT,
+        StockService::WARRANTY_IN, StockService::WARRANTY_OUT];
 
     public function __construct(private AccountingService $accounting) {}
 
@@ -307,7 +308,12 @@ class FinancePostingService
         }
 
         $in = $movement->quantity > 0;
-        $other = $movement->type === StockService::OPENING ? 'opening_balance_equity' : 'inventory_adjustment';
+        // phone bodle dile in/out samane samane kete jay; accessory bodle dile (purono ta nosto) khoroch
+        $other = match ($movement->type) {
+            StockService::OPENING                              => 'opening_balance_equity',
+            StockService::WARRANTY_IN, StockService::WARRANTY_OUT => 'warranty_expense',
+            default                                            => 'inventory_adjustment',
+        };
 
         return $this->accounting->post([
             'date'         => $movement->created_at?->toDateString() ?? now()->toDateString(),

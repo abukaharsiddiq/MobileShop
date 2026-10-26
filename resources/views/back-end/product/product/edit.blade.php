@@ -154,9 +154,13 @@
                                     <input type="number" name="low_stock_threshold" class="form-control" min="0" value="{{ old('low_stock_threshold', $product->low_stock_threshold) }}" placeholder="Default {{ config('inventory.low_stock_threshold') }}">
                                     <small class="text-muted">Each variant can override this on the product page.</small>
                                 </div>
-                                <div class="col-md-6 mb-3">
-                                    <label class="fw-bold">Warranty (months)</label>
+                                <div class="col-md-3 mb-3">
+                                    <label class="fw-bold">Shop Warranty (months)</label>
                                     <input type="number" name="warranty_months" class="form-control" min="0" max="120" value="{{ old('warranty_months', $product->warranty_months) }}">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="fw-bold">Brand warranty (months)</label>
+                                    <input type="number" name="brand_warranty_months" class="form-control" min="0" max="120" value="{{ old('brand_warranty_months', $product->brand_warranty_months) }}" placeholder="Official / manufacturer">
                                 </div>
                             </div>
                             <label class="fw-bold">Description / Notes (Optional)</label>

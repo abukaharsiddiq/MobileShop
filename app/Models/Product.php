@@ -21,6 +21,7 @@ class Product extends Model
         'sale_price',
         'low_stock_threshold',
         'warranty_months',
+        'brand_warranty_months',
         'description',
         'unit',
         'status',
@@ -37,6 +38,7 @@ class Product extends Model
             'dual_sim' => 'boolean',
             'low_stock_threshold' => 'integer',
             'warranty_months' => 'integer',
+            'brand_warranty_months' => 'integer',
         ];
     }
 

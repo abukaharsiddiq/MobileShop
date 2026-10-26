@@ -37,6 +37,7 @@ class SaleReturnService
         private SalePaymentService $payments,
         private SaleService $sales,
         private FinancePostingService $finance,
+        private WarrantyService $warranties,
     ) {}
 
     public static function canApprove(User $user): bool
@@ -306,6 +307,9 @@ class SaleReturnService
             'store_credit'     => round($remainder - $cashRefund, 2),   // exchange e khoroch hoyeche + ja credit e thaklo
             'exchange_sale_id' => $exchangeSale?->id,
         ]);
+
+        // ferot device/qty er warranty batil; exchange e notun device er warranty policy onujayi
+        $this->warranties->applyReturn($return, $exchangeSale);
 
         // kisti thakle bakir sathe milano
         $this->payments->syncScheduleToDue($sale);

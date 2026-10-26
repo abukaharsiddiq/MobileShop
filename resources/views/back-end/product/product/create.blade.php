@@ -184,8 +184,12 @@
                                     <input type="number" name="low_stock_threshold" class="form-control" min="0" value="{{ old('low_stock_threshold') }}" placeholder="Default {{ config('inventory.low_stock_threshold') }}">
                                 </div>
                                 <div class="col-md-3 mb-3">
-                                    <label class="font-weight-bold">Warranty (months)</label>
+                                    <label class="font-weight-bold">Shop Warranty (months)</label>
                                     <input type="number" name="warranty_months" class="form-control" min="0" max="120" value="{{ old('warranty_months') }}">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="font-weight-bold">Brand warranty (months)</label>
+                                    <input type="number" name="brand_warranty_months" class="form-control" min="0" max="120" value="{{ old('brand_warranty_months') }}" placeholder="Official / manufacturer">
                                 </div>
                             </div>
                             <small class="text-muted d-block mb-2">SKU and barcode belong to this first variant. Stock is not entered here: it comes from Purchase or Stock Reconciliation.</small>

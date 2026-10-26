@@ -33,6 +33,10 @@ class ImeiService
     const MARKED_DAMAGED = 'marked_damaged';
     const RESTORED = 'restored';
     const WRITTEN_OFF = 'written_off';
+    const WARRANTY_CLAIM = 'warranty_claim';            // customer er phone claim e jama (customer er-i thake)
+    const WARRANTY_RETURNED = 'warranty_returned';      // claim er por customer ke ferot
+    const WARRANTY_REPLACED = 'warranty_replaced';      // nosto phone dokane (damaged), customer notun pelo
+    const WARRANTY_REPLACEMENT = 'warranty_replacement'; // notun phone ta kon claim e deya holo
 
     // hate status bodlano (permission: manage imei): [from => [to => event]]
     const TRANSITIONS = [

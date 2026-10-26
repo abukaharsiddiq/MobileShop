@@ -37,7 +37,7 @@
                 <div class="col-md-3"><small class="text-muted d-block">Category / Brand</small>{{ $product->category->name ?? '-' }} / {{ $product->brand->brand_name ?? '-' }}</div>
                 <div class="col-md-2"><small class="text-muted d-block">Total Stock</small><b>{{ $variants->sum('quantity') }}</b> {{ $product->unit }}</div>
                 <div class="col-md-2"><small class="text-muted d-block">Low Stock Alert At</small>{{ $product->low_stock_threshold ?? config('inventory.low_stock_threshold') . ' (default)' }}</div>
-                <div class="col-md-2"><small class="text-muted d-block">Warranty</small>{{ $product->warranty_months ? $product->warranty_months . ' months' : '-' }}</div>
+                <div class="col-md-2"><small class="text-muted d-block">Warranty (shop / brand)</small>{{ $product->warranty_months ? $product->warranty_months . ' m' : '-' }} / {{ $product->brand_warranty_months ? $product->brand_warranty_months . ' m' : '-' }}</div>
             </div>
             @if($product->description)
                 <p class="mt-3 mb-0 text-muted">{{ $product->description }}</p>
