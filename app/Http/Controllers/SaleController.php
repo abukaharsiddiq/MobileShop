@@ -7,16 +7,16 @@ use App\Models\Customer;
 use App\Models\Setting;
 use App\Models\Sale;
 use App\Models\SaleDetail;
+use App\Models\SalePayment;
 use App\Models\MainStock;
 use App\Models\Branch;
-use App\Models\CustomerLedger;
 use App\Models\ProductImei;
-use App\Services\AuditLogger;
-use App\Services\ImeiService;
+use App\Models\User;
 use App\Services\InvoiceNumberService;
-use App\Services\LedgerService;
 use App\Services\SalePaymentService;
-use App\Services\StockService;
+use App\Services\SaleService;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use DB;
 use Auth;
 use Brian2694\Toastr\Facades\Toastr;
@@ -25,59 +25,88 @@ class SaleController extends Controller
 {
     private $heading;
     public function __construct(
-        private ImeiService $imeiService,
-        private StockService $stockService,
         private InvoiceNumberService $invoiceNumbers,
-        private LedgerService $ledger,
         private SalePaymentService $payments,
+        private SaleService $sales,
     )
     {
         $this->heading = 'Sale';
     }
 
-public function index(){
-
+// Sales history: invoice/customer/IMEI khoja, tarikh, salesperson, branch, status, due; filter er mot
+public function index(Request $request){
+    $request->validate([
+        'from_date' => 'nullable|date',
+        'to_date'   => 'nullable|date',
+        'status'    => 'nullable|in:completed,cancelled',
+        'payment'   => 'nullable|in:due,paid',
+    ]);
     $name = 'Sale List';
     $title = 'Manage Sales';
-    
-    $sales = Sale::with('customer')
-                 ->orderBy('id', 'desc')
-                 ->get();
 
-    return view('back-end.sale.index', compact('sales', 'name', 'title'));
+    $query = Sale::query()
+        ->when($request->user()->allowedBranchIds(), fn ($q, $ids) => $q->where(fn ($w) => $w->whereIn('branch_id', $ids)->orWhereNull('branch_id')))
+        ->when($request->q, function ($q, $term) {
+            $phone = Customer::normalizePhone($term);
+            $q->where(fn ($w) => $w->where('invoice_no', 'like', "%{$term}%")
+                ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$term}%")->orWhere('phone', 'like', "%{$term}%")
+                    ->when($phone && strlen($phone) >= 4, fn ($p) => $p->orWhere('phone_normalized', 'like', "%{$phone}%")))
+                ->orWhereIn('id', ProductImei::where('imei_no', $term)->orWhere('imei_no_2', $term)->select('sale_id'))
+                ->orWhereIn('id', \App\Models\ImeiMovement::where('event', 'sale')->where(fn ($m) => $m->where('imei_no', $term)->orWhere('imei_no_2', $term))
+                    ->where('reference_type', 'Sale')->select('reference_id')));
+        })
+        ->when($request->from_date, fn ($q, $d) => $q->whereDate('sale_date', '>=', $d))
+        ->when($request->to_date, fn ($q, $d) => $q->whereDate('sale_date', '<=', $d))
+        ->when($request->salesperson_id, fn ($q, $id) => $q->where('salesperson_id', $id))
+        ->when($request->branch_id, fn ($q, $id) => $q->where('branch_id', $id))
+        ->when($request->status, fn ($q, $s) => $q->where('status', $s))
+        ->when($request->payment === 'due', fn ($q) => $q->where('due_amount', '>', 0))
+        ->when($request->payment === 'paid', fn ($q) => $q->where('due_amount', '<=', 0)->completed());
+
+    $totals = (clone $query)->completed()->selectRaw('COUNT(*) as invoices, COALESCE(SUM(grand_total), 0) as total,
+        COALESCE(SUM(paid_amount), 0) as paid, COALESCE(SUM(due_amount), 0) as due')->first();
+    $sales = $query->with(['customer', 'salesperson:id,name', 'branch:id,name'])
+        ->orderByDesc('id')->paginate(25)->withQueryString();
+
+    $salespeople = User::whereIn('id', Sale::whereNotNull('salesperson_id')->distinct()->select('salesperson_id'))->orderBy('name')->get(['id', 'name']);
+    $branches = Branch::orderBy('name')->get(['id', 'name']);
+    $methods = array_keys(SalePayment::methods());
+
+    return view('back-end.sale.index', compact('sales', 'name', 'title', 'totals', 'salespeople', 'branches', 'methods'));
 }
 
 public function show($id)
 {
     $name = 'Sale Details';
-    $title = 'Invoice #' . $id;
 
     $sale = Sale::with([
-        'customer', 
-        'items.product', 
-        'items.ram', 
-        'items.rom', 
-        'items.color',
-        'items.imeis'
+        'customer', 'salesperson:id,name', 'branch:id,name', 'canceller:id,name', 'user:id,name',
+        'items.product', 'items.ram', 'items.rom', 'items.color', 'items.imeis',
+        'payments.receiver:id,name', 'returns',
     ])->findOrFail($id);
+    abort_unless(request()->user()->canAccessBranch($sale->branch_id), 403);
+    $title = 'Invoice #' . $sale->invoice_no;
+    $methods = array_keys(SalePayment::methods());
 
-    return view('back-end.sale.show', compact('sale', 'name', 'title'));
+    return view('back-end.sale.show', compact('sale', 'name', 'title', 'methods'));
 }
 
 public function updatePayment(Request $request)
 {
     $request->validate([
-        'sale_id' => 'required|exists:sales,id',
-        'paid_amount' => 'required|numeric|min:0.01',
-        'payment_date' => 'required|date',
+        'sale_id'        => 'required|exists:sales,id',
+        'paid_amount'    => 'required|numeric|min:0.01',
+        'payment_date'   => 'required|date',
+        'payment_method' => 'nullable|string|max:30',
+        'reference'      => 'nullable|string|max:100',
     ]);
 
     try {
         DB::beginTransaction();
 
-        // due er beshi neya jay na; kisti thakle kisti te bhag hoy; ledger e entry
+        // due er beshi neya jay na; kisti thakle kisti te bhag hoy; ledger e entry; ekoi reference duibar na
         $this->payments->receive(Sale::findOrFail($request->sale_id), (float) $request->paid_amount,
-            $request->payment_date, $request->payment_method, $request->note);
+            $request->payment_date, $request->payment_method, $request->note, 'Received', null, $request->reference);
 
         DB::commit();
         Toastr::success('Payment updated successfully!');
@@ -89,17 +118,20 @@ public function updatePayment(Request $request)
     }
 }
 
+    // POS: customer, salesperson, payment method; product AJAX khoja ba variant list theke
     public function create(){
         $name= $this->heading;
         $title = $this->heading;
         // shudhu dekhanor jonno; asol number save er somoy toiri hoy
         $SaleinvoiceNo = $this->invoiceNumbers->previewSale();
-        $customers = Customer::where('status', 1)->get();
+        $customers = Customer::where('status', 1)->orderBy('name')->get(['id', 'name', 'phone']);
         // shudhu active product er active variant (inactive bikri hoy na)
         $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])->where('quantity', '>', 0)->active()->get();
-        return view('back-end.sale.create',compact('name','title','customers','stocks','SaleinvoiceNo'));
+        $salespeople = User::where('status', 1)->whereIn('role', array_merge(['admin'], User::staffRoles()))->orderBy('name')->get(['id', 'name']);
+        $methods = SalePayment::methods();
+        $token = (string) Str::uuid();
+        return view('back-end.sale.create',compact('name','title','customers','stocks','SaleinvoiceNo','salespeople','methods','token'));
     }
-
 
 public function store(Request $request)
 {
@@ -110,194 +142,112 @@ public function store(Request $request)
         'stock_ids.*' => 'required|exists:main_stocks,id',
         'qtys'        => 'required|array',
         'qtys.*'      => 'required|integer|min:1',
-        'sale_prices'   => 'required|array',
-        'sale_prices.*' => 'required|numeric|min:0',
+        'sale_prices'   => 'nullable|array',
+        'sale_prices.*' => 'nullable|numeric|min:0',
         'item_discounts.*' => 'nullable|numeric|min:0',
         'imeis'       => 'nullable|array',
         'imeis.*'     => 'nullable|array',
         'discount'    => 'nullable|numeric|min:0',
-        'paid_amount' => 'required|numeric|min:0',
+        'tax_rate'    => 'nullable|numeric|min:0|max:100',
+        'additional_charge'      => 'nullable|numeric|min:0',
+        'additional_charge_note' => 'nullable|string|max:255',
+        'paid_amount' => 'nullable|numeric|min:0',
+        'payment_method' => 'nullable|string|max:30',
+        'payments'             => 'nullable|array|max:10',
+        'payments.*.method'    => 'nullable|string|max:30',
+        'payments.*.amount'    => 'nullable|numeric|min:0',
+        'payments.*.reference' => 'nullable|string|max:100',
+        'payments.*.account'   => 'nullable|string|max:255',
+        'salesperson_id' => 'nullable|exists:users,id',
+        'sale_token'     => 'nullable|string|max:64',
+        'expected_total' => 'nullable|numeric',
         'is_installment'        => 'nullable|in:0,1',
         'total_installments'    => 'required_if:is_installment,1|nullable|integer|min:1|max:60',
         'next_installment_date' => 'nullable|date',
+        'note'           => 'nullable|string|max:2000',
     ]);
 
     try {
         DB::beginTransaction();
-
-        $canSellBelowCost = $request->user()->can('sell below cost');
-
-        // inactive customer ke notun bikri na (ager due/ferot cholbe)
-        $customer = Customer::lockForUpdate()->findOrFail($request->customer_id);
-        if ((int) $customer->status !== 1) {
-            throw new \Exception("{$customer->name} is inactive. Activate the customer before selling.");
-        }
-
-        $sale = new Sale();
-        $sale->invoice_no      = $this->invoiceNumbers->nextSale();
-        $sale->customer_id     = $request->customer_id;
-        $sale->sale_date       = $request->sale_date;
-        $sale->subtotal        = 0;
-        $sale->discount        = 0;
-        $sale->grand_total     = 0;
-        $sale->paid_amount     = 0;
-        $sale->due_amount      = 0;
-        $sale->payment_method  = $request->payment_method;
-        $sale->payment_account = $request->payment_account;
-        $sale->created_by      = auth()->id();
-        $sale->save();
-
-        $subtotal = 0;
-        $totalCost = 0;
-        $belowCost = [];
-
-        foreach ($request->stock_ids as $key => $stock_id) {
-            $qty = (int) ($request->qtys[$key] ?? 0);
-
-            // Variant (RAM/ROM/Color) main_stock_id diye; lock kore jate eki somoy duijon eki stock bikri na kore
-            $stock = MainStock::with(['product', 'ram', 'rom', 'color'])->lockForUpdate()->findOrFail($stock_id);
-            $label = $stock->variantLabel();
-
-            if (!$stock->isSellable()) {
-                throw new \Exception("{$label} is inactive and cannot be sold.");
-            }
-
-            // stock row lock kora (upore); ei mot stock er beshi na (config dile IMEI chara product e negative jete pare)
-            if ($qty > $stock->quantity && !StockService::allowsNegative($stock)) {
-                throw new \Exception("Not enough stock for {$label}. Available: {$stock->quantity}, requested: {$qty}." . StockService::negativeHint($stock));
-            }
-
-            $imeiIds = array_values(array_unique(array_filter((array) ($request->imeis[$key] ?? []))));
-
-            // smartphone: registered IMEI chara bikri hobe na; accessory: IMEI na
-            $this->imeiService->assertProductRules($stock->product, $qty, $imeiIds, $label);
-
-            $imeis = collect();
-            if (count($imeiIds) > 0) {
-                // IMEI ta ei variant er kina (lock shoho, jate duijon ekshathe ekoi phone bikri na kore)
-                $imeis = ProductImei::whereIn('id', $imeiIds)
-                    ->where('main_stock_id', $stock->id)
-                    ->lockForUpdate()
-                    ->get();
-
-                if ($imeis->count() != count($imeiIds)) {
-                    throw new \Exception("{$label}: one or more selected IMEI do not belong to this product variant.");
-                }
-
-                // available hote hobe (ba ei customer er jonno reserved); sold/repair/damaged na
-                $notSellable = $imeis->reject(fn ($i) => $i->isSellableTo((int) $request->customer_id));
-                if ($notSellable->isNotEmpty()) {
-                    throw new \Exception("{$label}: these IMEI cannot be sold: "
-                        . $notSellable->map(fn ($i) => "{$i->imei_no} ({$i->statusText()})")->implode(', '));
-                }
-
-                // onno branch e thaka phone ei user bikri korte parbe na
-                $otherBranch = $imeis->reject(fn ($i) => $request->user()->canAccessBranch($i->branch_id));
-                if ($otherBranch->isNotEmpty()) {
-                    throw new \Exception("{$label}: these IMEI are in another branch: " . $otherBranch->pluck('imei_no')->implode(', '));
-                }
-            }
-
-            // line er hishab server e (browser er total bishwas kora hoy na)
-            $price = round((float) $request->sale_prices[$key], 2);
-            $itemDiscount = round((float) ($request->item_discounts[$key] ?? 0));
-            $lineGross = round($qty * $price, 2);
-            if ($itemDiscount > $lineGross) {
-                throw new \Exception("{$label}: discount cannot be more than the line total.");
-            }
-            $lineTotal = round($lineGross - $itemDiscount, 2);
-            $cost = (float) ($stock->average_purchase_price ?? 0);
-
-            if ($lineTotal / $qty < $cost) {
-                $belowCost[] = "{$label}: selling at " . number_format($lineTotal / $qty, 2) . ', cost ' . number_format($cost, 2);
-            }
-
-            $item = new SaleDetail();
-            $item->sale_id        = $sale->id;
-            $item->product_id     = $stock->product_id;
-            $item->ram_id         = $stock->ram_id;
-            $item->rom_id         = $stock->rom_id;
-            $item->color_id       = $stock->color_id;
-            $item->quantity       = $qty;
-            $item->purchase_price = $cost;
-            $item->sale_price     = $price;
-            $item->item_discount  = $itemDiscount;
-            $item->unit_total     = $lineTotal;
-            $item->save();
-
-            $subtotal += $lineTotal;
-            $totalCost += $qty * $cost;
-
-            foreach ($imeis as $imei) {
-                $this->imeiService->sell($imei, $sale, $item->id, (int) $sale->customer_id);
-            }
-
-            // phone je branch e chilo sei branch theke; IMEI chara hole user er branch. Ekoi line duibar na (key)
-            $branchId = $imeis->pluck('branch_id')->filter()->unique()->count() === 1 ? (int) $imeis->first()->branch_id : Branch::currentId();
-            $this->stockService->move($stock, -$qty, StockService::SALE, $sale, null, $branchId, 'sale:' . $item->id);
-        }
-
-        // invoice er hishab
-        $subtotal = round($subtotal, 2);
-        $discount = round((float) ($request->discount ?? 0), 2);
-        if ($discount > $subtotal) {
-            throw new \Exception('Invoice discount cannot be more than the subtotal.');
-        }
-        $grandTotal = round($subtotal - $discount, 2);
-        if ($grandTotal < round($totalCost, 2)) {
-            $belowCost[] = 'Invoice total ' . number_format($grandTotal, 2) . ' is below cost ' . number_format($totalCost, 2);
-        }
-
-        // kroymuller niche bikri shudhu jader permission ache (audit log e thake)
-        if ($belowCost) {
-            if (!$canSellBelowCost) {
-                throw new \Exception('Sale price is below purchase cost. ' . implode('; ', $belowCost));
-            }
-            AuditLogger::log('sale.below_cost', $sale, null, ['lines' => $belowCost]);
-        }
-
-        $paid = round((float) $request->paid_amount, 2);
-        if ($paid > $grandTotal) {
-            throw new \Exception('Paid amount (' . number_format($paid, 2) . ') cannot be more than the grand total (' . number_format($grandTotal, 2) . ').');
-        }
-
-        $sale->subtotal    = $subtotal;
-        $sale->discount    = $discount;
-        $sale->grand_total = $grandTotal;
-        $sale->paid_amount = $paid;
-        $sale->due_amount  = round($grandTotal - $paid, 2);
-        $sale->save();
-
-        if ($request->is_installment == 1) {
-            if ($sale->due_amount <= 0) {
-                throw new \Exception('Nothing is due, so an installment plan is not needed.');
-            }
-            $firstDate = \Carbon\Carbon::parse($request->next_installment_date ?? now()->addMonth());
-            $this->payments->createSchedule($sale, (int) $request->total_installments, $firstDate);
-        }
-
-        $this->ledger->customerEntry([
-            'customer_id'      => $sale->customer_id,
-            'date'             => $sale->sale_date,
-            'transaction_type' => 'Sale',
-            'sale_id'          => $sale->id,
-            'reference_no'     => $sale->invoice_no,
-            'debit'            => $grandTotal,
-            'credit'           => $paid,
-            'note'             => 'Sale Invoice: ' . $sale->invoice_no,
-        ]);
-
+        $sale = $this->sales->checkout($request->all(), $request->user());
         DB::commit();
-        Toastr::success('Sale Added Successfully', 'Success', ["positionClass" => "toast-top-right"]);
-        return redirect()->route('sale.index')->with([
-            'print_sale_id' => $sale->id,
-            'auto_print' => true
-        ]);
-
     } catch (\Exception $e) {
         DB::rollBack();
         return back()->with('error', errorMessage($e))->withInput();
     }
+
+    if (!$sale->wasRecentlyCreated) {
+        return redirect()->route('sale.show', $sale->id)->with('success', "Invoice {$sale->invoice_no} was already saved; nothing was added.");
+    }
+
+    Toastr::success('Sale Added Successfully', 'Success', ["positionClass" => "toast-top-right"]);
+    return redirect()->route('sale.index')->with([
+        'print_sale_id' => $sale->id,
+        'auto_print' => true
+    ]);
+}
+
+// Pura sale batil (stock, IMEI, ledger ulto, taka ferot); record thake
+public function cancel(Request $request, $id)
+{
+    $request->validate([
+        'reason'        => 'required|string|min:5|max:255',
+        'refund_method' => 'nullable|string|max:30',
+    ]);
+    $sale = Sale::findOrFail($id);
+    abort_unless($request->user()->canAccessBranch($sale->branch_id), 403);
+
+    try {
+        DB::beginTransaction();
+        $this->sales->cancel($sale, $request->reason, $request->user(), $request->refund_method ?: 'Cash');
+        DB::commit();
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->with('error', errorMessage($e));
+    }
+
+    return back()->with('success', "Invoice {$sale->invoice_no} cancelled; stock and payments reversed.");
+}
+
+// purono "Delete" button: sale muchhe na, cancel hoy
+public function delete(Request $request, $id)
+{
+    abort_unless($request->user()->can('cancel sale'), 403);
+    $request->merge(['reason' => $request->input('reason') ?: 'Deleted from the sales list']);
+
+    return $this->cancel($request, $id);
+}
+
+// POS khoja: barcode, SKU, product naam/model ba IMEI (IMEI hole oi phone ta sathe)
+public function searchProducts(Request $request)
+{
+    $request->validate(['q' => 'required|string|min:2|max:100']);
+    $term = trim($request->q);
+
+    $imei = ProductImei::whereNumber($term)
+        ->whereIn('status', [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_RESERVED])
+        ->whereNotNull('main_stock_id')->accessibleBy($request->user())->latest('id')->first();
+
+    $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])->active()->where('quantity', '>', 0)
+        ->where(function ($q) use ($term, $imei) {
+            $q->where('barcode', $term)->orWhere('sku', 'like', '%' . strtoupper($term) . '%')
+                ->orWhereHas('product', fn ($p) => $p->where('product_name', 'like', "%{$term}%")->orWhere('model_number', 'like', "%{$term}%"));
+            if ($imei) {
+                $q->orWhere('main_stocks.id', $imei->main_stock_id);
+            }
+        })
+        ->limit(20)->get();
+
+    return response()->json($stocks->map(fn ($s) => [
+        'stock_id'  => $s->id,
+        'label'     => $s->variantLabel(),
+        'sku'       => $s->sku,
+        'price'     => (float) ($s->sale_price ?? $s->product->sale_price),
+        'stock'     => (int) $s->quantity,
+        'uses_imei' => $s->product->requiresImei() || ProductImei::where('main_stock_id', $s->id)->owned()->exists(),
+        'imei_id'   => $imei && $imei->main_stock_id === $s->id ? $imei->id : null,
+        'exact'     => $s->barcode === $term || $s->sku === strtoupper($term) || ($imei && $imei->main_stock_id === $s->id),
+    ])->sortByDesc('exact')->values());
 }
 
 public function getAvailableImeis($stock_id)
@@ -322,7 +272,8 @@ public function getAvailableImeis($stock_id)
 public function printInvoice($id)
 {
 
-    $sale = Sale::with(['customer', 'saleDetails.product'])
+    $sale = Sale::with(['customer', 'saleDetails.product', 'saleDetails.ram', 'saleDetails.rom', 'saleDetails.color',
+                    'payments', 'salesperson:id,name', 'branch:id,name'])
                 ->findOrFail($id);
 
     $setting = \DB::table('settings')->first(); 

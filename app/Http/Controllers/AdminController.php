@@ -15,7 +15,7 @@ class AdminController extends Controller
 	    $today = now()->format('Y-m-d');
 	    $thisMonth = now()->month;
 
-	    $data['today_sale'] = Sale::whereDate('sale_date', $today)->sum('grand_total');
+	    $data['today_sale'] = Sale::completed()->whereDate('sale_date', $today)->sum('grand_total');
 	    $data['monthly_expense'] = Expense::whereYear('expense_date', now()->year)->whereMonth('expense_date', $thisMonth)->sum('amount');
 
 	    $data['total_stock_value'] = DB::table('main_stocks')
@@ -40,6 +40,7 @@ class AdminController extends Controller
 		$data['top_products'] = DB::table('sale_details')
 		    ->join('products', 'sale_details.product_id', '=', 'products.id')
 		    ->join('sales', 'sale_details.sale_id', '=', 'sales.id')
+		    ->where('sales.status', 'completed')
 		    ->whereYear('sales.sale_date', now()->year)->whereMonth('sales.sale_date', now()->month)
 		    ->select('products.product_name', 
 		            DB::raw('SUM(sale_details.quantity) as total_qty'),

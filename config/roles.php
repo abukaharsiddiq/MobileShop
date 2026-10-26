@@ -39,7 +39,7 @@ return [
             'create attendance', 'read attendance',
             'read stock report', 'read sales report', 'read supplier report', 'read customer report', 'read expense report',
             'read stock adjustment', 'create stock adjustment', 'approve stock adjustment',
-            'search imei', 'manage imei', 'sell below cost',
+            'search imei', 'manage imei', 'sell below cost', 'cancel sale',
         ],
     ],
 

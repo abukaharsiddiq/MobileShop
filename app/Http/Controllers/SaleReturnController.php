@@ -96,8 +96,12 @@ public function store(Request $request)
     DB::beginTransaction();
     try {
         $sale = Sale::lockForUpdate()->findOrFail($request->sale_id);
+        if ($sale->isCancelled()) {
+            throw new \Exception("Invoice {$sale->invoice_no} is cancelled; nothing can be returned.");
+        }
         $details = SaleDetail::with('product')->where('sale_id', $sale->id)->lockForUpdate()->get()->keyBy('id');
         $factor = $this->invoiceDiscountFactor($sale, $details);
+        $lineSum = round((float) $details->sum('unit_total'), 2);
 
         // ১. kon line theke koyta ferot
         $lines = []; // detail_id => ['qty' => k, 'imeis' => [...]]
@@ -180,7 +184,7 @@ public function store(Request $request)
 
             // ডিটেইল টেবিল থেকে কমানো
             $newQty = $detail->quantity - $k;
-            $detail->item_discount = $detail->quantity > 0 ? round($detail->item_discount * $newQty / $detail->quantity) : 0;
+            $detail->item_discount = $detail->quantity > 0 ? round($detail->item_discount * $newQty / $detail->quantity, 2) : 0;
             $detail->unit_total = $newQty > 0 ? round($detail->unit_total - $lineReduction, 2) : 0;
             $detail->quantity = $newQty;
             $detail->save();
@@ -241,9 +245,12 @@ public function store(Request $request)
         $dueAdjusted = min($totalRefund, $dueBefore);
         $cashRefund = round($totalRefund - $dueAdjusted, 2);
 
+        // invoice discount ar tax line er anupate kome; additional charge (service) ferot hoy na
+        $share = $lineSum > 0 ? $subtotalReduction / $lineSum : 0;
         $sale->grand_total = round($sale->grand_total - $totalRefund, 2);
         $sale->subtotal = round($sale->subtotal - $subtotalReduction, 2);
-        $sale->discount = max(0, round($sale->subtotal - $sale->grand_total, 2));
+        $sale->tax_amount = round((float) $sale->tax_amount * (1 - $share), 2);
+        $sale->discount = max(0, round($sale->subtotal + (float) $sale->tax_amount + (float) $sale->additional_charge - $sale->grand_total, 2));
         $sale->paid_amount = round($sale->paid_amount - $cashRefund, 2);
         $sale->due_amount = round($dueBefore - $dueAdjusted, 2);
         $sale->save();
@@ -265,7 +272,7 @@ public function store(Request $request)
             'note'             => 'Sale Return. Total Refund: ' . number_format($totalRefund, 2),
         ]);
         if ($cashRefund > 0) {
-            $this->ledger->customerEntry([
+            $refundEntry = $this->ledger->customerEntry([
                 'customer_id'      => $sale->customer_id,
                 'date'             => now()->toDateString(),
                 'transaction_type' => 'Refund Paid',
@@ -273,6 +280,14 @@ public function store(Request $request)
                 'reference_no'     => 'RET-' . $saleReturn->id,
                 'debit'            => $cashRefund,
                 'note'             => 'Cash refunded to customer' . ($request->refund_method ? ' (' . $request->refund_method . ')' : ''),
+            ]);
+            $refundMethod = $request->refund_method ?: 'Cash';
+            $channel = \App\Models\SalePayment::channelOf(collect(array_keys(\App\Models\SalePayment::methods()))
+                ->first(fn ($m) => strcasecmp($m, $refundMethod) === 0) ?? 'Cash') ?? 'cash';
+            \App\Models\SalePayment::create([
+                'sale_id' => $sale->id, 'customer_id' => $sale->customer_id, 'type' => \App\Models\SalePayment::TYPE_REFUND,
+                'method' => $refundMethod, 'channel' => $channel, 'amount' => $cashRefund, 'payment_date' => now()->toDateString(),
+                'received_by' => auth()->id(), 'customer_ledger_id' => $refundEntry->id, 'note' => 'Sale return RET-' . $saleReturn->id,
             ]);
         }
 
@@ -290,12 +305,14 @@ public function store(Request $request)
     }
 }
 
-// Invoice discount er bhag: grand_total / (line total er jogfol). Discount na thakle 1.
+// Line er dam theke ferot: (grand_total - additional charge) / line total er jogfol -
+// invoice discount kome, tax er bhag jog hoy; additional charge (service) ferot hoy na.
 private function invoiceDiscountFactor(Sale $sale, $details)
 {
     $lineTotal = $details->sum('unit_total');
+    $goodsWithTax = (float) $sale->grand_total - (float) $sale->additional_charge;
 
-    return $lineTotal > 0 ? min(1, max(0, $sale->grand_total / $lineTotal)) : 1;
+    return $lineTotal > 0 ? max(0, $goodsWithTax / $lineTotal) : 1;
 }
 
 }

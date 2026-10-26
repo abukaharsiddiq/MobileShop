@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Installment;
 use App\Models\Sale;
+use App\Models\SalePayment;
 use Carbon\Carbon;
 
 /**
@@ -54,18 +55,23 @@ class SalePaymentService
      * kisti te jay (aagam deya jay); na dile purono kisti theke.
      */
     public function receive(Sale $sale, float $amount, string $date, ?string $method = null, ?string $note = null,
-                            string $type = 'Received', ?int $startInstallmentId = null): Sale
+                            string $type = 'Received', ?int $startInstallmentId = null, ?string $reference = null, ?string $account = null): Sale
     {
         $sale = Sale::lockForUpdate()->findOrFail($sale->id);
         $amount = round($amount, 2);
         $due = round((float) $sale->due_amount, 2);
+        $method = $method ?: 'Cash';
 
+        if ($sale->isCancelled()) {
+            throw new \Exception("Invoice {$sale->invoice_no} is cancelled.");
+        }
         if ($amount <= 0) {
             throw new \Exception('Payment amount must be greater than zero.');
         }
         if ($amount > $due) {
             throw new \Exception("Invoice {$sale->invoice_no} has only " . number_format($due, 2) . ' due. You cannot take ' . number_format($amount, 2) . '.');
         }
+        $channel = self::assertMethod($method, $reference);
 
         $sale->paid_amount = round($sale->paid_amount + $amount, 2);
         $sale->due_amount = round($due - $amount, 2);
@@ -73,7 +79,7 @@ class SalePaymentService
 
         $this->allocateToInstallments($sale, $amount, $date, $method, $startInstallmentId);
 
-        $this->ledger->customerEntry([
+        $entry = $this->ledger->customerEntry([
             'customer_id'      => $sale->customer_id,
             'date'             => $date,
             'transaction_type' => $type,
@@ -84,7 +90,51 @@ class SalePaymentService
             'note'             => $note ?: 'Payment for invoice: ' . $sale->invoice_no,
         ]);
 
+        // method/reference shoho bhag (report e cash/bank/mobile alada)
+        SalePayment::create([
+            'sale_id'            => $sale->id,
+            'customer_id'        => $sale->customer_id,
+            'type'               => SalePayment::TYPE_DUE,
+            'method'             => $method,
+            'channel'            => $channel,
+            'amount'             => $amount,
+            'account'            => $account,
+            'reference'          => $reference ?: null,
+            'payment_date'       => $date,
+            'received_by'        => auth()->id(),
+            'customer_ledger_id' => $entry->id,
+            'note'               => $note,
+        ]);
+
         return $sale;
+    }
+
+    /**
+     * Method config('pos.payment_methods') e thakte hobe; bank/mobile e reference (trx id) lage,
+     * ar ekoi method e ekoi reference duibar na (ekoi taka duibar dhora na). Fere channel.
+     */
+    public static function assertMethod(string &$method, ?string $reference, bool $requireReference = false): string
+    {
+        // "cash" / "CASH" -> "Cash" (config er naam)
+        $method = collect(array_keys(SalePayment::methods()))->first(fn ($m) => strcasecmp($m, trim($method)) === 0) ?? $method;
+        $channel = SalePayment::channelOf($method);
+        if (!$channel) {
+            throw new \Exception("Unknown payment method: {$method}.");
+        }
+
+        $reference = trim((string) $reference);
+        if ($requireReference && $reference === '' && in_array($channel, config('pos.reference_required', []), true)) {
+            throw new \Exception("{$method} payment needs a transaction / cheque reference.");
+        }
+        if ($reference !== '') {
+            $used = SalePayment::with('sale:id,invoice_no')->where('method', $method)->where('reference', $reference)
+                ->where('type', '!=', SalePayment::TYPE_REFUND)->first();
+            if ($used) {
+                throw new \Exception("Duplicate payment: {$method} reference {$reference} is already used on invoice " . ($used->sale->invoice_no ?? '#' . $used->sale_id) . '.');
+            }
+        }
+
+        return $channel;
     }
 
     /**

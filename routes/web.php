@@ -336,7 +336,10 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/store', [SaleController::class, 'store'])->name('store')->middleware('can:create sale');
         Route::get('/edit/{id}', [SaleController::class, 'edit'])->name('edit')->middleware('can:update sale');
         Route::put('/update/{id}', [SaleController::class, 'update'])->name('update')->middleware('can:update sale');
-        Route::delete('/delete/{id}', [SaleController::class, 'delete'])->name('delete')->middleware('can:delete sale');
+        // muchhe na - cancel (stock, IMEI, ledger ulto, taka ferot)
+        Route::delete('/delete/{id}', [SaleController::class, 'delete'])->name('delete')->middleware('can:cancel sale');
+        Route::post('/cancel/{id}', [SaleController::class, 'cancel'])->name('cancel')->middleware('can:cancel sale');
+        Route::get('/search-products', [SaleController::class, 'searchProducts'])->name('search_products')->middleware('can:create sale');
         Route::post('/change/status/{id}', [SaleController::class, 'changeStatus'])->name('status.change')->middleware('can:update sale');
 
         Route::get('/show/{id}', [SaleController::class, 'show'])->name('show')->middleware('can:read sale');
