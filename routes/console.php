@@ -385,3 +385,49 @@ Artisan::command('installments:verify {--sale= : Only this sale id}', function (
 
     return $issues ? 1 : 0;
 })->purpose('Check installment schedules against payments and invoice dues (read-only)');
+
+// Read-only: journal balanced kina, customer/supplier ledger ar receivable/payable mile kina, kon document journal e nei.
+Artisan::command('finance:audit', function (App\Services\FinanceAuditService $audit) {
+    $problems = 0;
+
+    foreach ($audit->run() as $issue) {
+        $count = count($issue['rows']);
+        $problems += $issue['severity'] === 'info' ? 0 : $count;
+        $line = sprintf('[%s] %s: %d', strtoupper($issue['severity']), $issue['title'], $count);
+        $count ? $this->warn($line) : $this->info($line);
+
+        foreach ($issue['rows'] as $row) {
+            $this->line('    - ' . $row);
+        }
+    }
+
+    $this->newLine();
+    $problems ? $this->warn("{$problems} item(s) need review; nothing was changed.") : $this->info('Books are consistent.');
+
+    return $problems ? 1 : 0;
+})->purpose('Check that the journal balances and matches customer/supplier ledgers (read-only)');
+
+// Upgrade er por ekbar: purono sale/purchase/payment/return/expense journal e (nijer tarikhe). Default dry-run;
+// --apply dile likhe. Bar bar chalaleo duibar post hoy na. Document ba ledger bodlay na.
+Artisan::command('finance:backfill {--apply : Write the journal entries (otherwise dry-run)}', function (App\Services\FinanceBackfillService $backfill) {
+    $apply = (bool) $this->option('apply');
+
+    Illuminate\Support\Facades\DB::beginTransaction();
+    try {
+        $count = $backfill->run();
+    } catch (\Throwable $e) {
+        Illuminate\Support\Facades\DB::rollBack();
+        $this->error('Stopped, nothing was written: ' . $e->getMessage());
+        return 1;
+    }
+    $apply ? Illuminate\Support\Facades\DB::commit() : Illuminate\Support\Facades\DB::rollBack();
+
+    foreach ($count as $kind => $n) {
+        $this->line(sprintf('    %-28s %d', $kind, $n));
+    }
+    $total = array_sum($count);
+    $this->info(($apply ? 'Posted' : 'Dry-run: would post') . " {$total} journal entr" . ($total === 1 ? 'y' : 'ies') . '.');
+    if (!$apply && $total) {
+        $this->warn('Nothing was written. Take a database backup, then run again with --apply, then php artisan finance:audit.');
+    }
+})->purpose('Post existing sales, purchases, payments, returns and expenses to the journal once (dry-run by default)');

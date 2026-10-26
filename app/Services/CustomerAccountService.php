@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 class CustomerAccountService
 {
-    public function __construct(private LedgerService $ledger) {}
+    public function __construct(private LedgerService $ledger, private FinancePostingService $finance) {}
 
     // ---- profile ----------------------------------------------------------------
 
@@ -43,6 +43,8 @@ class CustomerAccountService
                 'note'             => ($opening > 0 ? 'Previous due of ' : 'Previous advance of ') . $customer->name,
             ]);
         }
+        // journal: Receivable <-> Opening Balance Equity
+        $this->finance->postPartyOpening($customer, $opening);
 
         AuditLogger::log('customer.created', $customer, null, $customer->only(['name', 'phone', 'opening_balance']));
 
@@ -97,6 +99,7 @@ class CustomerAccountService
 
         $customer->update(['opening_balance' => $amount]);
         $this->ledger->recalculateCustomer($customer->id);
+        $this->finance->postPartyOpening($customer, $amount);   // purono opening reverse, notun ta post
 
         AuditLogger::log('customer.opening_balance_changed', $customer, ['opening_balance' => $old], ['opening_balance' => $amount, 'reason' => $reason]);
     }

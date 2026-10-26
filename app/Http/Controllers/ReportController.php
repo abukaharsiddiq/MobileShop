@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Sale;
 use App\Models\SaleDetail;
 use App\Models\Expense;
+use App\Services\FinanceReportService;
 use DB;
 use Carbon\Carbon;
 
@@ -50,43 +51,25 @@ class ReportController extends Controller
         return view('back-end.reports.sales_item', compact('itemSales', 'name', 'title', 'start_date', 'end_date'));
     }
 
-    public function netProfitReport(Request $request)
+    public function netProfitReport(Request $request, FinanceReportService $finance)
 {
 
     $name = 'Net Profit Report';
     $title = 'Net Profit Report';
 
-    $start_date = $request->start_date ?? date('Y-m-01');
-    $end_date = $request->end_date ?? date('Y-m-d');
+    // journal theke: return/refund return er tarikhe, discount/tax/purchase return/stock loss shoho, reverse kora expense bad
+    [$start_date, $end_date] = $finance->period($request);
+    $report = $finance->profitAndLoss($start_date, $end_date);
 
-    // বিক্রয় মূল্য = invoice er grand_total - tax (sarkar er taka, ay na); cancel kora sale bad
-    $totalSalesAmount = DB::table('sales')
-        ->where('status', 'completed')
-        ->whereBetween('sale_date', [$start_date, $end_date])
-        ->sum(DB::raw('grand_total - tax_amount'));
-
-    $salesData = DB::table('sale_details')
-        ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
-        ->where('sales.status', 'completed')
-        ->whereBetween('sales.sale_date', [$start_date, $end_date])
-        ->select(
-            DB::raw('SUM(sale_details.quantity * sale_details.purchase_price) as total_purchase_cost')
-        )
-        ->first();
-    $salesData->total_sales = $totalSalesAmount;
-
-    $totalExpenses = DB::table('expenses')
-        ->whereBetween('expense_date', [$start_date, $end_date])
-        ->sum('amount');
-
-
-    $totalSales = $salesData->total_sales ?? 0;
-    $totalPurchaseCost = $salesData->total_purchase_cost ?? 0;
-    $grossProfit = $totalSales - $totalPurchaseCost;
-    $netProfit = $grossProfit - $totalExpenses;
+    $totalSales = $report['net_sales'];
+    $totalPurchaseCost = $report['cogs'];
+    $grossProfit = $report['gross_profit'];
+    $otherIncome = $report['other_income'];
+    $totalExpenses = $report['expenses'];
+    $netProfit = $report['net_profit'];
 
     return view('back-end.reports.net_profit1', compact(
-        'totalSales', 'totalPurchaseCost', 'grossProfit', 'totalExpenses', 'netProfit', 'start_date', 'end_date','name','title'
+        'totalSales', 'totalPurchaseCost', 'grossProfit', 'otherIncome', 'totalExpenses', 'netProfit', 'start_date', 'end_date', 'name', 'title', 'report'
     ));
 }
 
@@ -100,6 +83,7 @@ public function expenseByMethod(Request $request)
 
 
     $methodData = DB::table('expenses')
+        ->where('status', 'posted')   // reverse kora expense bad
         ->select('payment_method', DB::raw('SUM(amount) as total_spent'), DB::raw('count(*) as total_transactions'))
         ->whereBetween('expense_date', [$start_date, $end_date])
         ->groupBy('payment_method')
@@ -120,6 +104,7 @@ public function customRangeReport(Request $request)
     $end_date = $request->end_date ?? date('Y-m-d');
 
     $expenses = Expense::with('category')
+        ->posted()
         ->whereBetween('expense_date', [$start_date, $end_date])
         ->orderBy('expense_date', 'asc')
         ->get();

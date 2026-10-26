@@ -149,6 +149,8 @@
             <form id="paymentForm" action="{{ route('sale.payment') }}" method="POST">
                 @csrf
                 <input type="hidden" name="sale_id" id="modal_sale_id">
+                {{-- ekoi form duibar submit hole ekbar-i taka neya hoy (reload e notun token) --}}
+                <input type="hidden" name="request_token" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
                 <div class="modal-body">
                     <div class="form-group"><label>Current Due</label><input type="text" id="modal_due_amount" class="form-control" readonly></div>
                     <div class="form-group"><label>Payment Date</label><input type="date" name="payment_date" class="form-control" value="{{ date('Y-m-d') }}" required></div>
@@ -225,5 +227,12 @@
   @if(session('auto_print') && session('print_sale_id'))
     window.open("{{ route('sale.print', session('print_sale_id')) }}", '_blank');
   @endif
+</script>
+<script>
+    // protibar modal khulle notun token: duibar click e ekbar, kintu ichchha kore porer payment o hoy
+    $('#paymentForm').closest('.modal').on('show.bs.modal', function () {
+        $('#paymentForm [name=request_token]').val(Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+    });
+    $('#paymentForm').on('submit', function () { $(this).find('button[type=submit]').prop('disabled', true); });
 </script>
 @endpush

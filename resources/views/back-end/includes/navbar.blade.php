@@ -651,6 +651,98 @@
         <!-- ======= Report  ========== -->
 
 
+       <!--  ======== Accounts & Finance ========= -->
+        @php $isAdmin = $user->role == 'admin'; @endphp
+        @if($isAdmin || auth()->user()->hasAnyPermission(['read accounts', 'read finance report', 'reconcile account', 'manage accounts']))
+            <li class="nav-item {{ request()->routeIs('finance.*') ? 'menu-open' : '' }}">
+                <a href="#" class="nav-link {{ request()->routeIs('finance.*') ? 'active' : '' }}">
+                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <p>Accounts & Finance <i class="fas fa-angle-left right"></i></p>
+                </a>
+                <ul class="nav nav-treeview">
+                    @if($isAdmin || auth()->user()->can('read accounts'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.accounts.index') }}" class="nav-link {{ request()->routeIs('finance.accounts.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Chart of Accounts</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read accounts'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.payments.index') }}" class="nav-link {{ request()->routeIs('finance.payments.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Receipts & Payments</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read accounts'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.income.index') }}" class="nav-link {{ request()->routeIs('finance.income.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Other Income</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read accounts'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.transfers.index') }}" class="nav-link {{ request()->routeIs('finance.transfers.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Cash / Bank Transfer</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('reconcile account'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.reconciliation.index') }}" class="nav-link {{ request()->routeIs('finance.reconciliation.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Reconciliation</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read accounts'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.journal.index') }}" class="nav-link {{ request()->routeIs('finance.journal.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Journal / Day Book</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read finance report'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.reports.income-expense') }}" class="nav-link {{ request()->routeIs('finance.reports.income-expense') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Income & Expense</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read finance report'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.reports.profit-loss') }}" class="nav-link {{ request()->routeIs('finance.reports.profit-loss') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Profit & Loss</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read finance report'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.reports.balance-sheet') }}" class="nav-link {{ request()->routeIs('finance.reports.balance-sheet') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Balance Sheet</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read finance report'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.reports.trial-balance') }}" class="nav-link {{ request()->routeIs('finance.reports.trial-balance') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Trial Balance</p>
+                        </a>
+                    </li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('manage accounts'))
+                    <li class="nav-item">
+                        <a href="{{ route('finance.years.index') }}" class="nav-link {{ request()->routeIs('finance.years.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Financial Years</p>
+                        </a>
+                    </li>
+                    @endif
+                </ul>
+            </li>
+        @endif
+       <!--  ======== Accounts & Finance ========= -->
+
+
        <!--  ======== Expense ========= -->
         @php
             $isAdmin = $user->role == 'admin';

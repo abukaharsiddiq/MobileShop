@@ -22,6 +22,8 @@ use Illuminate\Support\Facades\DB;
  */
 class StockService
 {
+    public function __construct(private FinancePostingService $finance) {}
+
     const OPENING = 'opening';
     const PURCHASE = 'purchase';
     const PURCHASE_DELETED = 'purchase_deleted';   // approved purchase cancel
@@ -83,7 +85,7 @@ class StockService
         $stock->quantity = $balance;
         MainStock::withQuantityUnlocked(fn () => $stock->save());
 
-        return StockMovement::create([
+        $movement = StockMovement::create([
             'main_stock_id'   => $stock->id,
             'product_id'      => $stock->product_id,
             'branch_id'       => $branchId ?? Branch::currentId(),
@@ -97,6 +99,11 @@ class StockService
             'note'            => $note,
             'idempotency_key' => $key,
         ]);
+
+        // document chara stock er dam bodlale (adjustment, damaged, lost, count, opening) journal e Inventory
+        $this->finance->postStockMovement($movement, $stock, $reference);
+
+        return $movement;
     }
 
     /**
