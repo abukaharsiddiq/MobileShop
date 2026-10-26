@@ -34,7 +34,7 @@ return [
             'create customer', 'read customer', 'update customer', 'read customer details',
             'create sale', 'read sale', 'update sale',
             'create return', 'read return', 'approve return',
-            'create installment', 'read installment',
+            'create installment', 'read installment', 'manage installment',
             'create expense', 'read expense',
             'create attendance', 'read attendance',
             'read stock report', 'read sales report', 'read supplier report', 'read customer report', 'read expense report',
@@ -62,7 +62,7 @@ return [
         'permissions' => [
             'read supplier', 'create supplier payment', 'read purchase', 'update purchase', 'read purchase return',
             'read customer', 'read customer details', 'update customer', 'read sale', 'update sale', 'read return',
-            'create installment', 'read installment',
+            'create installment', 'read installment', 'manage installment',
             'create expense category', 'read expense category', 'update expense category',
             'create expense', 'read expense', 'update expense',
             'read stock report', 'read sales report', 'read supplier report', 'read customer report', 'read expense report',

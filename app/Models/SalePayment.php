@@ -16,7 +16,7 @@ class SalePayment extends Model
 
     protected $fillable = [
         'sale_id', 'customer_id', 'type', 'method', 'channel', 'amount', 'account', 'reference',
-        'payment_date', 'received_by', 'customer_ledger_id', 'note',
+        'payment_date', 'received_by', 'customer_ledger_id', 'note', 'request_token',
     ];
 
     protected function casts(): array

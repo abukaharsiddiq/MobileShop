@@ -462,9 +462,19 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/store', [InstallmentCollectionController::class, 'store'])->name('store')->middleware('can:create installment');
 
         Route::get('/due-list', [InstallmentCollectionController::class, 'dueList'])->name('due')->middleware('can:read installment');
+        Route::get('/overdue', [InstallmentCollectionController::class, 'overdue'])->name('overdue')->middleware('can:read installment');
+        Route::get('/sale/{sale}', [InstallmentCollectionController::class, 'show'])->name('sale')->middleware('can:read installment');
+        Route::get('/receipt/{payment}', [InstallmentCollectionController::class, 'receipt'])->name('receipt')->middleware('can:read installment');
+        Route::get('/customer/{customer}/statement', [InstallmentCollectionController::class, 'customerStatement'])->name('statement')->middleware('can:read installment');
+        Route::post('/{installment}/reminded', [InstallmentCollectionController::class, 'markReminded'])->name('reminded')->middleware('can:create installment');
+
+        // early settlement discount, late fee mafi/bosano
+        Route::post('/sale/{sale}/settle', [InstallmentCollectionController::class, 'settle'])->name('settle')->middleware('can:manage installment');
+        Route::post('/{installment}/waive-late-fee', [InstallmentCollectionController::class, 'waiveLateFee'])->name('waive')->middleware('can:manage installment');
+        Route::post('/late-fees/apply', [InstallmentCollectionController::class, 'applyLateFees'])->name('late-fees')->middleware('can:manage installment');
 
         // কাস্টমার সিলেক্ট করলে কিস্তি লোড করার জন্য AJAX রুট
-        Route::get('/get-customer-installments/{id}', [InstallmentCollectionController::class, 'getCustomerInstallments'])->middleware('can:create installment');
+        Route::get('/get-customer-installments/{id}', [InstallmentCollectionController::class, 'getCustomerInstallments'])->name('customer')->middleware('can:create installment');
     });
     /* installment */
 

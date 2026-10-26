@@ -72,6 +72,7 @@ class PermissionSeeder extends Seeder
             ['approve return', 'Sale Return'],                    // pending return approve/reject, exchange
             ['create installment', 'Installment'],
             ['read installment', 'Installment'],
+            ['manage installment', 'Installment'],               // early settlement discount, late fee bosano/mafi
             ['create attendance', 'Attendance'],
             ['read attendance', 'Attendance'],
             ['read stock report', 'Report'],

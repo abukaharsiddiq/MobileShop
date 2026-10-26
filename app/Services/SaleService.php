@@ -227,11 +227,17 @@ class SaleService
             if ($sale->due_amount <= 0) {
                 throw new \Exception('Nothing is due, so an installment plan is not needed.');
             }
-            $months = (int) ($input['total_installments'] ?? 0);
-            if ($months < 1 || $months > 60) {
-                throw new \Exception('Installment months must be between 1 and 60.');
+            // down payment = POS e ja deya holo; baki ta kisti te
+            $count = (int) ($input['total_installments'] ?? 0);
+            if ($count < 1 || $count > 60) {
+                throw new \Exception('Number of installments must be between 1 and 60.');
             }
-            $this->payments->createSchedule($sale, $months, Carbon::parse($input['next_installment_date'] ?? now()->addMonth()));
+            $frequency = $input['installment_frequency'] ?? 'monthly';
+            $firstDue = Carbon::parse(($input['next_installment_date'] ?? null) ?: SalePaymentService::dueDate(Carbon::parse($sale->sale_date), 1, $frequency));
+            if ($firstDue->lt(Carbon::parse($sale->sale_date)->startOfDay())) {
+                throw new \Exception('First installment date cannot be before the sale date.');
+            }
+            $this->payments->createSchedule($sale, $count, $firstDue, $frequency);
         }
 
         $entry = $this->ledger->customerEntry([
@@ -297,7 +303,7 @@ class SaleService
                 $sale->branch_id, 'sale_cancel:' . $detail->id);
         }
 
-        Installment::where('sale_id', $sale->id)->delete();
+        $this->payments->cancelSchedule($sale, $reason);
 
         // store credit diye deya ongsho abar credit hoye jay (sale bad, tai "used" e gona hoy na); nogod tuku ferot
         $creditUsed = round((float) SalePayment::where('sale_id', $sale->id)->where('type', SalePayment::TYPE_SALE)->where('channel', 'credit')->sum('amount'), 2);

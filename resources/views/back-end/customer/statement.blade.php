@@ -64,6 +64,9 @@
                     <tr><td>+ Opening balance</td><td class="text-right">{{ number_format($statement['opening_entry'], 2) }}</td></tr>
                     @endif
                     <tr><td>+ Sales</td><td class="text-right">{{ number_format($statement['sales'], 2) }}</td></tr>
+                    @if($statement['charges'] != 0)
+                    <tr><td>+ Late fees / − settlement discounts</td><td class="text-right">{{ number_format($statement['charges'], 2) }}</td></tr>
+                    @endif
                     <tr><td>− Paid</td><td class="text-right">{{ number_format($statement['paid'], 2) }}</td></tr>
                     <tr><td>− Returns</td><td class="text-right">{{ number_format($statement['returns'], 2) }}</td></tr>
                     @if($statement['refunds'] > 0)

@@ -127,7 +127,7 @@
                             <td>{{ $installment->sale->invoice_no ?? '-' }}</td>
                             <td>{{ $installment->installment_no }}</td>
                             <td>{{ date('d-m-Y', strtotime($installment->due_date)) }}</td>
-                            <td class="text-right">{{ $money($installment->amount) }}</td>
+                            <td class="text-right">{{ $money($installment->totalDue()) }}</td>
                             <td class="text-right">{{ $money($installment->paid_amount) }}</td>
                         </tr>
                         @empty

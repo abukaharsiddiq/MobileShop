@@ -869,7 +869,7 @@
                 <li class="nav-item">
                     <a href="{{ route('installments.create') }}" class="nav-link {{ request()->routeIs('installments.create') ? 'active' : '' }}">
                         <i class="far fa-circle nav-icon"></i>
-                        <p>New Installment Sale</p>
+                        <p>Collect Installment</p>
                     </a>
                 </li>
                 @endif
@@ -884,7 +884,13 @@
                 <li class="nav-item">
                     <a href="{{ route('installments.due') }}" class="nav-link {{ request()->routeIs('installments.due') ? 'active' : '' }}">
                         <i class="far fa-circle nav-icon"></i>
-                        <p>Due Installments List</p>
+                        <p>Reminders (Due Soon)</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{ route('installments.overdue') }}" class="nav-link {{ request()->routeIs('installments.overdue') ? 'active' : '' }}">
+                        <i class="far fa-circle nav-icon"></i>
+                        <p>Overdue Report</p>
                     </a>
                 </li>
                 @endif

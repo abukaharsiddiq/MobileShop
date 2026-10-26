@@ -161,11 +161,23 @@
                                     </select>
                                 </div>
                                 <div class="col-md-2 installment_fields" style="display:none">
-                                    <label class="pos-label">Months</label>
+                                    <label class="pos-label">Installments</label>
                                     <input type="number" min="1" max="60" name="total_installments" id="total_installments" class="form-control" value="{{ old('total_installments', 6) }}" oninput="calculateInstallmentAmount()">
                                 </div>
                                 <div class="col-md-2 installment_fields" style="display:none">
-                                    <label class="pos-label">Monthly</label>
+                                    <label class="pos-label">Frequency</label>
+                                    <select name="installment_frequency" class="form-control">
+                                        @foreach (config('installments.frequencies') as $key => $f)
+                                            <option value="{{ $key }}" @selected(old('installment_frequency', 'monthly') === $key)>{{ $f['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-2 installment_fields" style="display:none">
+                                    <label class="pos-label">First due</label>
+                                    <input type="date" name="next_installment_date" class="form-control" value="{{ old('next_installment_date') }}" title="Empty = one period after the sale date">
+                                </div>
+                                <div class="col-md-2 installment_fields" style="display:none" title="Amount paid now is the down payment; the rest is split into installments">
+                                    <label class="pos-label">Per installment</label>
                                     <input type="text" id="installment_per_month" class="form-control font-weight-bold text-danger" readonly>
                                 </div>
                                 <div class="col">

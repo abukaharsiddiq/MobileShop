@@ -136,7 +136,7 @@ public function show($id)
     $sales = Sale::where('customer_id', $id)->orderByDesc('sale_date')->orderByDesc('id')->limit(10)->get();
     $payments = $this->paymentRows($id)->limit(10)->get();
     $returns = SaleReturn::with('sale:id,invoice_no')->where('customer_id', $id)->latest('id')->limit(10)->get();
-    $installments = Installment::with('sale:id,invoice_no')->where('customer_id', $id)->where('status', '!=', 'paid')
+    $installments = Installment::with('sale:id,invoice_no')->where('customer_id', $id)->open()
         ->orderBy('due_date')->limit(12)->get();
     $warranties = $this->accounts->warranties($customer);
     $deviceHistory = $this->accounts->deviceHistory($customer, 50);
@@ -349,7 +349,7 @@ public function storeInvoicePayment(Request $request)
 
 public function paymentHistory(Request $request)
 {
-    $query = CustomerLedger::where('transaction_type', 'Received')
+    $query = CustomerLedger::whereIn('transaction_type', ['Received', 'Installment Payment'])
                 ->with(['customer', 'sale'])
                 ->latest();
 
@@ -380,7 +380,7 @@ private function paymentRows(int $customerId)
 {
     return CustomerLedger::with('sale:id,invoice_no,payment_method')
         ->where('customer_id', $customerId)
-        ->where(fn ($q) => $q->where(fn ($w) => $w->whereIn('transaction_type', ['Sale', 'Received'])->where('credit', '>', 0))
+        ->where(fn ($q) => $q->where(fn ($w) => $w->whereIn('transaction_type', ['Sale', 'Received', 'Installment Payment'])->where('credit', '>', 0))
             ->orWhere('transaction_type', 'Refund Paid'))
         ->orderByDesc('date')->orderByDesc('id');
 }

@@ -1,88 +1,74 @@
 @extends('back-end.master')
 
-@section('admin-title', 'Due Installment List')
+@section('admin-title', 'Installment Reminders')
 
 @section('admin-content')
+@php $money = fn ($v) => number_format((float) $v, 2); @endphp
 <div class="container-fluid">
     <div class="card shadow mb-4">
-        <div class="card-header py-2">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
             <h6 class="m-0 font-weight-bold">
-              Upcoming & Overdue Installments
-              ({{ $installments->total() }}) Pending
+              Reminders: overdue &amp; due until {{ date('d M Y', strtotime($until)) }}
+              ({{ $installments->total() }})
             </h6>
+            <a href="{{ route('installments.overdue') }}" class="btn btn-sm btn-outline-danger">Overdue Report</a>
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-bordered table-hover" id="dueTable">
+                <table class="table table-bordered table-hover table-sm" id="dueTable">
                     <thead>
                         <tr>
                             <th>#SL</th>
                             <th>Customer Info</th>
                             <th>Invoice</th>
                             <th>Inst. No</th>
-                            <th>Payable</th>
+                            <th class="text-right">Balance</th>
                             <th>Due Date</th>
-                            <th>Days Left</th>
+                            <th>Days</th>
+                            <th>Reminded</th>
                             <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($installments as $key => $row)
                         @php
-                            $dueDate = \Carbon\Carbon::parse($row->due_date);
-                            $isOverdue = $dueDate->isPast() && !$dueDate->isToday();
-                            $daysDiff = \Carbon\Carbon::now()->diffInDays($dueDate, false);
+                            $days = (int) now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($row->due_date), false);
+                            $message = \App\Services\InstallmentService::reminderMessage($row);
+                            $wa = \App\Services\InstallmentService::whatsappLink($row);
                         @endphp
-                        <tr class="{{ $isOverdue ? 'table-danger' : '' }}">
+                        <tr class="{{ $days < 0 ? 'table-danger' : '' }}" id="row{{ $row->id }}">
                             <td>{{ $installments->firstItem() + $key }}</td>
-                            <td>
-                                <strong>{{ $row->customer_name }}</strong><br>
-                                <small class="text-muted"><i class="fa fa-phone"></i> {{ $row->phone }}</small>
-                            </td>
-                            <td><span class="badge badge-secondary">{{ $row->invoice_no }}</span></td>
+                            <td><strong>{{ $row->customer->name ?? '-' }}</strong><br><small>{{ $row->customer->phone ?? '' }}</small></td>
+                            <td><a href="{{ route('installments.sale', $row->sale_id) }}">{{ $row->sale->invoice_no ?? '-' }}</a></td>
                             <td class="text-center">{{ $row->installment_no }}</td>
-                            <td class="text-right font-weight-bold">
-                                {{ number_format($row->amount - $row->paid_amount, 2) }}
-                                @if($row->paid_amount > 0)
-                                    <br><small class="text-muted">of {{ number_format($row->amount, 2) }} (partly paid)</small>
-                                @endif
-                            </td>
+                            <td class="text-right font-weight-bold">{{ $money($row->openAmount()) }}</td>
+                            <td>{{ date('d M Y', strtotime($row->due_date)) }}</td>
                             <td>
-                                <span class="{{ $isOverdue ? 'text-danger font-weight-bold' : '' }}">
-                                    {{ $dueDate->format('d M, Y') }}
-                                </span>
+                                @if($days < 0)<span class="badge badge-danger">{{ abs($days) }} day(s) late</span>
+                                @elseif($days === 0)<span class="badge badge-warning">Today</span>
+                                @else<span class="badge badge-info">in {{ $days }} day(s)</span>@endif
                             </td>
-                            <td>
-                                @if($isOverdue)
-                                    <span class="badge badge-danger">Overdue by {{ abs($daysDiff) }} days</span>
-                                @elseif($dueDate->isToday())
-                                    <span class="badge badge-warning">Due Today</span>
-                                @else
-                                    <span class="badge badge-info">{{ $daysDiff }} days left</span>
+                            <td class="reminded"><small>{{ $row->reminder_count ? $row->reminder_count . '× · ' . $row->last_reminded_at->format('d M h:i A') : 'Never' }}</small></td>
+                            <td class="text-center text-nowrap">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" title="Copy message" onclick="copyMessage(this)" data-message="{{ $message }}"><i class="fa fa-copy"></i></button>
+                                @if($row->customer && $row->customer->phone)
+                                <a href="tel:{{ $row->customer->phone }}" class="btn btn-sm btn-outline-primary" title="Call" onclick="markReminded({{ $row->id }}, 'call')"><i class="fa fa-phone"></i></a>
                                 @endif
-                            </td>
-                            <td class="text-center">
-                                <a href="{{ route('installments.create', ['customer_id' => $row->customer_id]) }}" 
-                                   class="btn btn-success btn-sm shadow-sm">
-                                    <i class="fa fa-hand-holding-usd"></i> Collect
-                                </a>
-                                <a href="tel:{{ $row->phone }}" class="btn btn-primary btn-sm shadow-sm" title="Call Customer">
-                                    <i class="fa fa-phone"></i>
-                                </a>
+                                @if($wa)
+                                <a href="{{ $wa }}" target="_blank" rel="noopener" class="btn btn-sm btn-success" title="WhatsApp" onclick="markReminded({{ $row->id }}, 'whatsapp')"><i class="fab fa-whatsapp"></i></a>
+                                @endif
+                                @can('create installment')
+                                <a href="{{ route('installments.create', ['customer_id' => $row->customer_id]) }}" class="btn btn-sm btn-primary" title="Collect"><i class="fa fa-money-bill"></i></a>
+                                @endcan
                             </td>
                         </tr>
                         @empty
-                        <tr>
-                            <td colspan="8" class="text-center text-muted">Great! No pending installments found.</td>
-                        </tr>
+                        <tr><td colspan="9" class="text-center text-muted">No installment is due soon.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
-            
-            <div class="mt-3 d-flex justify-content-end">
-                {{ $installments->links() }}
-            </div>
+            {{ $installments->links() }}
         </div>
     </div>
 </div>
@@ -90,11 +76,16 @@
 
 @push('admin-scripts')
 <script>
-    $(document).ready(function() {
-        $('#dueTable').DataTable({
-            "pageLength": 25,
-            "ordering": false
-        });
-    });
+    function copyMessage(btn) {
+        let text = $(btn).data('message');
+        navigator.clipboard ? navigator.clipboard.writeText(text) : window.prompt('Copy the message', text);
+        toastr.success('Reminder message copied.');
+        markReminded($(btn).closest('tr').attr('id').replace('row', ''), 'sms');
+    }
+
+    function markReminded(id, channel) {
+        $.post(@json(url('installments')) + '/' + id + '/reminded', { _token: @json(csrf_token()), channel: channel })
+            .done(() => $('#row' + id + ' .reminded small').text('Just now (' + channel + ')'));
+    }
 </script>
 @endpush

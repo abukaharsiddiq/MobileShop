@@ -130,12 +130,12 @@ class CustomerAccountService
             ->selectRaw('COUNT(*) as total, COALESCE(SUM(total_refund), 0) as amount, COALESCE(SUM(cash_refund), 0) as cash')
             ->first();
         $ledger = CustomerLedger::where('customer_id', $customer->id)
-            ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type IN ('Sale', 'Received') THEN credit ELSE 0 END), 0) as received,
+            ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type IN ('Sale', 'Received', 'Installment Payment') THEN credit ELSE 0 END), 0) as received,
                 COALESCE(SUM(CASE WHEN transaction_type = 'Refund Paid' THEN debit ELSE 0 END), 0) as refunded")
             ->first();
-        $installments = Installment::where('customer_id', $customer->id)
-            ->selectRaw("COALESCE(SUM(amount), 0) as planned, COALESCE(SUM(paid_amount), 0) as paid,
-                COALESCE(SUM(CASE WHEN status != 'paid' AND due_date < ? THEN amount - paid_amount ELSE 0 END), 0) as overdue,
+        $installments = Installment::where('customer_id', $customer->id)->where('status', '!=', Installment::STATUS_CANCELLED)
+            ->selectRaw("COALESCE(SUM(amount + late_fee), 0) as planned, COALESCE(SUM(paid_amount), 0) as paid,
+                COALESCE(SUM(CASE WHEN status != 'paid' AND due_date < ? THEN amount + late_fee - paid_amount ELSE 0 END), 0) as overdue,
                 SUM(CASE WHEN status != 'paid' AND due_date < ? THEN 1 ELSE 0 END) as overdue_count,
                 MIN(CASE WHEN status != 'paid' THEN due_date END) as next_due", [now()->toDateString(), now()->toDateString()])
             ->first();
@@ -200,7 +200,8 @@ class CustomerAccountService
             'credit'        => round((float) $rows->sum('credit'), 2),
             'opening_entry' => round($sum(['Opening Balance'], 'debit') - $sum(['Opening Balance'], 'credit'), 2),
             'sales'         => round($sum(['Sale'], 'debit') - $sum(['Sale Cancelled'], 'credit'), 2),
-            'paid'          => $sum(['Sale', 'Received'], 'credit'),
+            'paid'          => $sum(['Sale', 'Received', 'Installment Payment'], 'credit'),
+            'charges'       => round($sum(['Late Fee'], 'debit') - $sum(['Late Fee Waived', 'Settlement Discount'], 'credit'), 2),   // kistir late fee - mafi/discount
             'returns'       => $sum(['Return'], 'credit'),
             'refunds'       => $sum(['Refund Paid'], 'debit'),
             'closing'       => $running,
