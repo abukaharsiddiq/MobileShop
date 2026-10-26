@@ -291,3 +291,58 @@ Artisan::command('inventory:negative-stock {mode : enable or disable} {--apply :
         ? 'Negative stock is now allowed by the database for items without IMEI (when ALLOW_NEGATIVE_STOCK=true).'
         : 'Negative stock is blocked by the database again.');
 })->purpose('Allow or block negative stock for non-IMEI items at database level (dry-run by default)');
+
+// Ekoi phone number (alada format e: 01711-..., +880...) er ekadhik customer - shudhu dekhay, merge kore na.
+Artisan::command('customers:duplicates', function () {
+    $customers = App\Models\Customer::orderBy('id')->get(['id', 'name', 'phone', 'alt_phone', 'phone_normalized', 'alt_phone_normalized']);
+    $byNumber = [];
+    foreach ($customers as $c) {
+        foreach (array_unique(array_filter([$c->phone_normalized, $c->alt_phone_normalized])) as $number) {
+            $byNumber[$number][$c->id] = $c;
+        }
+    }
+    $groups = array_filter($byNumber, fn ($list) => count($list) > 1);
+
+    foreach ($groups as $number => $list) {
+        $this->warn("{$number}:");
+        foreach ($list as $c) {
+            $this->line("    #{$c->id} {$c->name} ({$c->phone}" . ($c->alt_phone ? ", {$c->alt_phone}" : '') . ')');
+        }
+    }
+    $this->info(count($groups) . ' phone number(s) shared by more than one customer. Nothing was changed; review and merge them by hand.');
+
+    return $groups ? 1 : 0;
+})->purpose('List customers that share a phone number in any format (read-only)');
+
+// Customer ledger ki sale record er sathe mele? (opening + invoice due = ledger balance). --apply shudhu running balance thik kore.
+Artisan::command('customers:reconcile {--apply : Fix running balances (otherwise dry-run)} {--customer= : Only this customer id}', function (App\Services\CustomerAccountService $accounts, App\Services\LedgerService $ledger) {
+    $apply = (bool) $this->option('apply');
+    $issues = 0;
+    $fixable = 0;
+
+    $customers = App\Models\Customer::orderBy('id')->when($this->option('customer'), fn ($q, $id) => $q->whereKey($id))->get();
+    Illuminate\Support\Facades\DB::transaction(function () use ($customers, $accounts, $ledger, $apply, &$issues, &$fixable) {
+        foreach ($customers as $customer) {
+            $result = $accounts->check($customer);
+            if (!$result['issues'] && !$result['running']) {
+                continue;
+            }
+            $this->line("customer #{$customer->id} {$customer->name}:");
+            foreach ($result['issues'] as $issue) {
+                $this->warn('    ' . $issue);
+            }
+            if ($result['running']) {
+                $this->line("    {$result['running']} running balance(s) " . ($apply ? 'fixed' : 'to fix'));
+                if ($apply) {
+                    $ledger->recalculateCustomer($customer->id);
+                }
+            }
+            $issues += count($result['issues']);
+            $fixable += $result['running'];
+        }
+    });
+
+    $this->info(($apply ? 'Fixed' : 'Dry-run: would fix') . " {$fixable} running balance(s). {$issues} mismatch(es) need manual review.");
+
+    return $issues ? 1 : 0;
+})->purpose('Check customer ledgers against sales (dry-run by default; never changes amounts)');

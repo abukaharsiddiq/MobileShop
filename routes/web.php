@@ -310,15 +310,19 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/change/status/{id}', [CustomerController::class, 'changeStatus'])->name('status.change')->middleware('can:update customer');
 
         Route::post('/quick-store', [CustomerController::class, 'quickStore'])->name('quick.store')->middleware('can:create customer');
-        Route::get('/ledger/{id}', [CustomerController::class, 'ledger'])->name('ledger')->middleware('can:read customer');
+        // customer er taka/kena r detail: 'read customer details'
+        Route::get('/show/{id}', [CustomerController::class, 'show'])->name('show')->middleware('can:read customer details');
+        Route::get('/ledger/{id}', [CustomerController::class, 'ledger'])->name('ledger')->middleware('can:read customer details');
+        Route::get('/statement/{id}', [CustomerController::class, 'statement'])->name('statement')->middleware('can:read customer details');
+        Route::get('/check-phone', [CustomerController::class, 'checkPhone'])->name('check_phone')->middleware('permission:create customer|update customer');
 
         Route::get('/payment-history', [CustomerController::class, 'paymentHistory'])->name('payment.history')->middleware('can:read customer report');
 
-        Route::get('/payment-history-indivisual/{id}', [CustomerController::class, 'paymentHistoryIndivisual'])->name('payment.history.indivisual')->middleware('can:read customer');
+        Route::get('/payment-history-indivisual/{id}', [CustomerController::class, 'paymentHistoryIndivisual'])->name('payment.history.indivisual')->middleware('can:read customer details');
 
         Route::get('/due-report', [CustomerController::class, 'dueReport'])->name('due.report')->middleware('can:read customer report');
 
-        Route::get('/purchase-history/{id}', [CustomerController::class, 'purchaseHistory'])->name('purchase_history')->middleware('can:read customer');
+        Route::get('/purchase-history/{id}', [CustomerController::class, 'purchaseHistory'])->name('purchase_history')->middleware('can:read customer details');
 
         Route::get('/get-due-invoices/{id}', [CustomerController::class, 'getDueInvoices'])->middleware('can:update customer');
         Route::post('/invoice-payment-store', [CustomerController::class, 'storeInvoicePayment'])->name('invoice_payment.store')->middleware('can:update customer');

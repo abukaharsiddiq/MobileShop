@@ -5,31 +5,53 @@ namespace App\Http\Controllers;
 use App\Models\Sale;
 use App\Models\Customer;
 use App\Models\CustomerLedger;
-use App\Services\LedgerService;
+use App\Models\Installment;
+use App\Models\ProductImei;
+use App\Models\SaleReturn;
+use App\Services\AuditLogger;
+use App\Services\CustomerAccountService;
 use App\Services\SalePaymentService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Brian2694\Toastr\Facades\Toastr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
 
   private $heading;
 
+  const PROFILE = ['name', 'phone', 'alt_phone', 'email', 'nid_no', 'customer_type', 'address', 'note'];
+
   public function __construct(
-     private LedgerService $ledger,
+     private CustomerAccountService $accounts,
      private SalePaymentService $payments,
   ){
      $this->heading = "Customer";
   }
 
-public function index()
+// Paginated: khoja (naam/phone jekono format/NID/email), status, dhoron, due/advance
+public function index(Request $request)
 {
+    $request->validate([
+        'status'  => 'nullable|in:0,1',
+        'type'    => ['nullable', Rule::in(array_keys(Customer::TYPES))],
+        'balance' => 'nullable|in:due,advance',
+    ]);
     $name = $this->heading;
     $title = $this->heading;
-    
-    $customers = Customer::orderBy('id', 'desc')->get();
+
+    $customers = Customer::query()
+        ->select('customers.*')
+        ->withBalance()
+        ->withCount('sales')
+        ->search($request->q)
+        ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+        ->when($request->type, fn ($q, $type) => $q->where('customer_type', $type))
+        ->when($request->balance === 'due', fn ($q) => $q->having('ledger_balance', '>', 0))
+        ->when($request->balance === 'advance', fn ($q) => $q->having('ledger_balance', '<', 0))
+        ->orderBy('id', 'desc')
+        ->paginate(25)->withQueryString();
 
     return view('back-end.customer.index', compact('customers', 'name', 'title'));
 }
@@ -41,58 +63,88 @@ public function create()
     return view('back-end.customer.create', compact('name', 'title'));
 }
 
- public function store(Request $request){
-      
-        $request->validate([
-            'name'  => 'required|string|max:255',
-            'phone' => 'required|string|max:20|unique:customers,phone',
-        ]);
+public function store(Request $request)
+{
+    $request->validate($this->rules());
 
-        try {
-            DB::beginTransaction();
+    DB::beginTransaction();
+    try {
+        $this->accounts->createCustomer($this->profile($request), $this->opening($request));
+        DB::commit();
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->withErrors(['phone' => errorMessage($e)])->withInput();
+    }
 
-            // ২. নতুন কাস্টমার তৈরি
-            $customer = new Customer();
-            $customer->name = $request->name;
-            $customer->phone = $request->phone;
-            $customer->address = $request->address;
-
-            if (\Schema::hasColumn('customers', 'opening_balance')) {
-                $customer->opening_balance = $request->opening_balance ?? 0;
-            }
-            $customer->save();
-
-            $opening_balance = $request->opening_balance ?? 0;
-            
-            if ($opening_balance > 0) {
-                $this->ledger->customerEntry([
-                    'customer_id'      => $customer->id,
-                    'date'             => now()->format('Y-m-d'),
-                    'transaction_type' => 'Opening Balance',
-                    'reference_no'     => 'OB-' . str_pad($customer->id, 5, '0', STR_PAD_LEFT),
-                    'debit'            => $opening_balance, // বকেয়া টাকা ডেবিট হিসেবে থাকে
-                    'credit'           => 0,
-                    'note'             => 'Initial opening balance for ' . $customer->name,
-                ]);
-            }
-
-            DB::commit();
-            Toastr::success('Data Added Successfully', 'Success', [
-               "positionClass" => "toast-top-right"
-            ]);
-
-            return redirect()->route('customer.index');
-           
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => errorMessage($e)
-            ], 500);
-        }
+    Toastr::success('Data Added Successfully', 'Success', [
+       "positionClass" => "toast-top-right"
+    ]);
+    return redirect()->route('customer.index');
 }
 
+// Sale form theke (AJAX); duplicate hole ager customer ta ferot dey jate bachai kora jay
+public function quickStore(Request $request)
+{
+    $request->validate($this->rules());
+
+    $existing = Customer::findByPhone($request->phone)->first();
+    if ($existing) {
+        return response()->json([
+            'success'  => false,
+            'message'  => "{$request->phone} already belongs to {$existing->name}. Select that customer instead.",
+            'existing' => $existing->only(['id', 'name', 'phone']),
+        ], 422);
+    }
+
+    DB::beginTransaction();
+    try {
+        $customer = $this->accounts->createCustomer($this->profile($request), $this->opening($request));
+        DB::commit();
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['success' => false, 'message' => errorMessage($e)], 422);
+    }
+
+    return response()->json([
+        'success'  => true,
+        'message'  => 'Customer added successfully!',
+        'data'     => $customer,
+        'customer' => $customer,   // sale form ei naam e pore
+    ]);
+}
+
+// Form e type korar somoy duplicate khoja (phone jekono format e)
+public function checkPhone(Request $request)
+{
+    $request->validate(['phone' => 'required|string|max:20', 'except_id' => 'nullable|integer']);
+    $matches = Customer::findByPhone($request->phone, $request->integer('except_id') ?: null);
+
+    return response()->json([
+        'duplicate' => $matches->isNotEmpty(),
+        'customers' => $matches->map(fn ($c) => $c->only(['id', 'name', 'phone', 'alt_phone']))->values(),
+    ]);
+}
+
+// Profile: hishab, invoice, kisti, warranty, phone er itihash
+public function show($id)
+{
+    $customer = Customer::findOrFail($id);
+    $name = $this->heading;
+    $title = $customer->name;
+    $summary = $this->accounts->summary($customer);
+
+    $sales = Sale::where('customer_id', $id)->orderByDesc('sale_date')->orderByDesc('id')->limit(10)->get();
+    $payments = $this->paymentRows($id)->limit(10)->get();
+    $returns = SaleReturn::with('sale:id,invoice_no')->where('customer_id', $id)->latest('id')->limit(10)->get();
+    $installments = Installment::with('sale:id,invoice_no')->where('customer_id', $id)->where('status', '!=', 'paid')
+        ->orderBy('due_date')->limit(12)->get();
+    $warranties = $this->accounts->warranties($customer);
+    $deviceHistory = $this->accounts->deviceHistory($customer, 50);
+    $reserved = ProductImei::with('product:id,product_name')->where('reserved_customer_id', $id)->where('status', ProductImei::STATUS_RESERVED)->get();
+
+    return view('back-end.customer.profile', compact('name', 'title', 'customer', 'summary', 'sales', 'payments', 'returns',
+        'installments', 'warranties', 'deviceHistory', 'reserved'));
+}
 
 public function edit($id){
     $name = $this->heading;
@@ -101,71 +153,129 @@ public function edit($id){
     return view('back-end.customer.edit',compact('name','title','customer'));
 }
 
-public function update(Request $request, $id){
-      
-    $request->validate([
-        'name'  => 'required|string|max:255',
-        'phone' => 'required|string|max:20|unique:customers,phone,'.$id,
-    ]);
+public function update(Request $request, $id)
+{
+    $customer = Customer::findOrFail($id);
+    $request->validate($this->rules($customer->id) + ['opening_reason' => 'nullable|string|max:255']);
 
+    // opening balance alada permission; form e na thakle ager ta thake
+    $opening = $request->filled('opening_balance') ? $this->opening($request) : null;
+    $openingChanged = $opening !== null && $opening !== round((float) $customer->opening_balance, 2);
+    if ($openingChanged) {
+        if (!$request->user()->can('update customer opening balance')) {
+            return back()->withErrors(['opening_balance' => 'You are not allowed to change the opening balance.'])->withInput();
+        }
+        if (!$request->filled('opening_reason')) {
+            return back()->withErrors(['opening_reason' => 'Please give a reason for changing the opening balance.'])->withInput();
+        }
+    }
+
+    DB::beginTransaction();
     try {
-        DB::beginTransaction();
-
-        // ২. কাস্টমার আপডেট
-        $customer = Customer::findOrFail($id);
-        $customer->name = $request->name;
-        $customer->phone = $request->phone;
-        $customer->address = $request->address;
-        $customer->save();
-
+        $this->accounts->assertNewPhone($request->phone, $request->alt_phone, $customer->id);
+        $old = $customer->only(self::PROFILE);
+        $customer->update($this->profile($request));
+        if ($customer->wasChanged()) {
+            AuditLogger::log('customer.updated', $customer, $old, $customer->only(self::PROFILE));
+        }
+        if ($openingChanged) {
+            $this->accounts->changeOpeningBalance($customer, $opening, $request->opening_reason);
+        }
         DB::commit();
-        Toastr::success('Data Updated Successfully', 'Success', [
-           "positionClass" => "toast-top-right"
-        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->withErrors(['phone' => errorMessage($e)])->withInput();
+    }
 
-        return redirect()->route('customer.index');
+    Toastr::success('Data Updated Successfully', 'Success', [
+       "positionClass" => "toast-top-right"
+    ]);
+    return redirect()->route('customer.index');
+}
 
+public function changeStatus($id, Request $request)
+{
+    $request->validate(['status' => 'required|in:0,1']);
+    $customer = Customer::findOrFail($id);
+    $old = (int) $customer->status;
+
+    $response = changeStatusHelper($customer, $request);
+    AuditLogger::log('customer.status_changed', $customer, ['status' => $old], ['status' => (int) $request->status]);
+
+    return $response;
+}
+
+// Lenden thakle muchha jay na (inactive kora jay)
+public function delete($id)
+{
+    DB::beginTransaction();
+    try {
+        $customer = Customer::lockForUpdate()->findOrFail($id);
+        $this->accounts->assertDeletable($customer);
+
+        CustomerLedger::where('customer_id', $id)->delete(); // shudhu shunno taka r opening line
+        AuditLogger::log('customer.deleted', $customer, $customer->only(self::PROFILE), null);
+        $customer->delete();
+        DB::commit();
     } catch (\Exception $e) {
         DB::rollBack();
         return back()->with('error', errorMessage($e));
     }
+
+    Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);
+    return redirect()->route('customer.index');
 }
 
+// Ledger / statement: tarikh dile ager balance (brought forward) shoho
 public function ledger(Request $request, $id)
 {
+    $request->validate(['from_date' => 'nullable|date', 'to_date' => 'nullable|date|after_or_equal:from_date']);
     $name = 'Customer Ledger';
     $customer = Customer::findOrFail($id);
     $title = 'Ledger of ' . $customer->name;
+    $statement = $this->accounts->statement($customer, $request->from_date, $request->to_date);
 
-    $from = $request->get('from_date');
-    $to = $request->get('to_date');
+    return view('back-end.customer.ledger', compact('statement', 'customer', 'name', 'title'));
+}
 
-    $query = CustomerLedger::where('customer_id', $id);
+// Chhapanor statement
+public function statement(Request $request, $id)
+{
+    $request->validate(['from_date' => 'nullable|date', 'to_date' => 'nullable|date|after_or_equal:from_date']);
+    $customer = Customer::findOrFail($id);
+    $statement = $this->accounts->statement($customer, $request->from_date, $request->to_date);
+    $summary = $this->accounts->summary($customer);
 
-    if ($from && $to) {
-        $query->whereBetween('date', [$from, $to]);
-    }
-
-    $ledgers = $query->orderBy('date', 'asc')
-                    ->orderBy('id', 'asc')
-                    ->get();
-
-    return view('back-end.customer.ledger', compact('ledgers', 'customer', 'name', 'title', 'from', 'to'));
+    return view('back-end.customer.statement', compact('customer', 'statement', 'summary'));
 }
 
 public function showLedger($id)
 {
+    return redirect()->route('customer.statement', $id);
+}
+
+// Invoice khoja: invoice no, IMEI, tarikh, due
+public function purchaseHistory(Request $request, $id)
+{
+    $request->validate(['from_date' => 'nullable|date', 'to_date' => 'nullable|date', 'due' => 'nullable|in:1']);
     $customer = Customer::findOrFail($id);
-    $name = "Customer Ledger";
-    $title = "Statement of " . $customer->name;
+    $name = $this->heading;
+    $title = 'Purchase History - ' . $customer->name;
 
-    // তারিখ অনুযায়ী লেজার ডাটা ফেচ করা
-    $ledgers = CustomerLedger::where('customer_id', $id)
-                ->orderBy('date', 'asc')
-                ->orderBy('id', 'asc')
-                ->get();
+    $sales = Sale::withCount('returns')->where('customer_id', $id)
+        ->when($request->q, function ($q, $term) {
+            $q->where(fn ($w) => $w->where('invoice_no', 'like', "%{$term}%")
+                ->orWhereIn('id', ProductImei::where('imei_no', $term)->orWhere('imei_no_2', $term)->select('sale_id'))
+                ->orWhereIn('id', \App\Models\SaleReturnItem::where('imei_no', $term)->join('sale_returns', 'sale_returns.id', '=', 'sale_return_items.sale_return_id')->select('sale_returns.sale_id')));
+        })
+        ->when($request->from_date, fn ($q, $d) => $q->whereDate('sale_date', '>=', $d))
+        ->when($request->to_date, fn ($q, $d) => $q->whereDate('sale_date', '<=', $d))
+        ->when($request->due, fn ($q) => $q->where('due_amount', '>', 0))
+        ->orderByDesc('sale_date')->orderByDesc('id')
+        ->paginate(20)->withQueryString();
+    $summary = $this->accounts->summary($customer);
 
-    return view('back-end.customer.show', compact('customer', 'ledgers', 'name', 'title'));
+    return view('back-end.customer.purchase_history', compact('name', 'title', 'customer', 'sales', 'summary'));
 }
 
 public function dueReport()
@@ -187,7 +297,7 @@ public function dueReport()
     return view('back-end.customer.due_report', compact('customers', 'name', 'title'));
 }
 
-// বকেয়া ইনভয়েস লিস্ট আনার জন্য (AJAX)
+// বকেয়া ইনভয়েস লিস্ট আনার জন্য (AJAX)
 public function getDueInvoices($id)
 {
     $invoices = Sale::where('customer_id', $id)
@@ -199,9 +309,6 @@ public function getDueInvoices($id)
 
 public function storeInvoicePayment(Request $request)
 {
-
-    // dd($request->all());
-
     $request->validate([
         'customer_id'   => 'required|exists:customers,id',
         'date'          => 'required|date',
@@ -255,73 +362,55 @@ public function paymentHistory(Request $request)
     }
 
     $payments = $query->paginate(20);
-    $customers = Customer::orderBy('name')->get();
+    $customers = Customer::orderBy('name')->get(['id', 'name', 'phone']);
 
     return view('back-end.customer.payment_history', compact('payments', 'customers'));
 }
 
+// Customer er shob payment: sale e deya, pore deya (kisti shoho), ar nogod ferot (minus)
 public function paymentHistoryIndivisual($id)
 {
     $customer = Customer::findOrFail($id);
-    
-    $payments = CustomerLedger::where('customer_id', $id)
-                ->where('transaction_type', 'Received')
-                ->with('sale')
-                ->latest()
-                ->get();
+    $payments = $this->paymentRows($id)->paginate(50);
 
     return view('back-end.customer.payment_history_indivisual', compact('payments', 'customer'));
 }
 
-    public function quickStore(Request $request){
-      
-        $request->validate([
-            'name'  => 'required|string|max:255',
-            'phone' => 'required|string|max:20|unique:customers,phone',
-        ]);
+private function paymentRows(int $customerId)
+{
+    return CustomerLedger::with('sale:id,invoice_no,payment_method')
+        ->where('customer_id', $customerId)
+        ->where(fn ($q) => $q->where(fn ($w) => $w->whereIn('transaction_type', ['Sale', 'Received'])->where('credit', '>', 0))
+            ->orWhere('transaction_type', 'Refund Paid'))
+        ->orderByDesc('date')->orderByDesc('id');
+}
 
-        try {
-            DB::beginTransaction();
+private function rules(?int $ignoreId = null): array
+{
+    return [
+        'name'                 => 'required|string|max:255',
+        'phone'                => ['required', 'string', 'max:20', 'regex:/^[0-9+\-\s()]{6,20}$/', Rule::unique('customers', 'phone')->ignore($ignoreId)],
+        'alt_phone'            => ['nullable', 'string', 'max:20', 'regex:/^[0-9+\-\s()]{6,20}$/'],
+        'email'                => 'nullable|email|max:255',
+        'nid_no'               => 'nullable|string|max:30',
+        'customer_type'        => ['nullable', Rule::in(array_keys(Customer::TYPES))],
+        'address'              => 'nullable|string|max:1000',
+        'note'                 => 'nullable|string|max:2000',
+        'opening_balance'      => 'nullable|numeric|min:0|max:999999999999',
+        'opening_balance_type' => 'nullable|in:due,advance',
+    ];
+}
 
-            // ২. নতুন কাস্টমার তৈরি
-            $customer = new Customer();
-            $customer->name = $request->name;
-            $customer->phone = $request->phone;
-            $customer->address = $request->address;
+private function profile(Request $request): array
+{
+    return array_merge($request->only(self::PROFILE), ['customer_type' => $request->customer_type ?: 'retail']);
+}
 
-            if (\Schema::hasColumn('customers', 'opening_balance')) {
-                $customer->opening_balance = $request->opening_balance ?? 0;
-            }
-            $customer->save();
+// form: Due = customer dhare (+), Advance = customer er agrim (-)
+private function opening(Request $request): float
+{
+    $amount = round((float) ($request->opening_balance ?? 0), 2);
 
-            $opening_balance = $request->opening_balance ?? 0;
-            
-            if ($opening_balance > 0) {
-                $this->ledger->customerEntry([
-                    'customer_id'      => $customer->id,
-                    'date'             => now()->format('Y-m-d'),
-                    'transaction_type' => 'Opening Balance',
-                    'reference_no'     => 'OB-' . str_pad($customer->id, 5, '0', STR_PAD_LEFT),
-                    'debit'            => $opening_balance, // বকেয়া টাকা ডেবিট হিসেবে থাকে
-                    'credit'           => 0,
-                    'note'             => 'Initial opening balance for ' . $customer->name,
-                ]);
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Customer added successfully!',
-                'data'    => $customer
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => errorMessage($e)
-            ], 500);
-        }
-    }
+    return $request->opening_balance_type === 'advance' ? -$amount : $amount;
+}
 }

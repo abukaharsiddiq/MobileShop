@@ -31,7 +31,7 @@ return [
             'create supplier', 'read supplier', 'update supplier', 'create supplier payment',
             'create purchase', 'read purchase', 'update purchase', 'approve purchase',
             'create purchase return', 'read purchase return',
-            'create customer', 'read customer', 'update customer',
+            'create customer', 'read customer', 'update customer', 'read customer details',
             'create sale', 'read sale', 'update sale',
             'create return', 'read return',
             'create installment', 'read installment',
@@ -61,7 +61,7 @@ return [
         'home'  => 'sales.dashboard',
         'permissions' => [
             'read supplier', 'create supplier payment', 'read purchase', 'update purchase', 'read purchase return',
-            'read customer', 'update customer', 'read sale', 'update sale', 'read return',
+            'read customer', 'read customer details', 'update customer', 'read sale', 'update sale', 'read return',
             'create installment', 'read installment',
             'create expense category', 'read expense category', 'update expense category',
             'create expense', 'read expense', 'update expense',
