@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\MainStock;
+use App\Models\PriceHistory;
 use App\Models\ProductImei;
 use App\Models\StockAdjustment;
 use App\Models\User;
@@ -12,8 +13,12 @@ use Illuminate\Support\Facades\DB;
 /**
  * Stock reconciliation:
  *  - IMEI registration: stock e thaka phone er asol IMEI register kora (stock quantity bodlay na)
- *  - Quantity correction: bhul/test stock thik kora (kono device record toiri hoy na)
- * Shob request age "pending" thake; approve korle tokhon transaction o lock er bhitore abar jachai kore apply hoy.
+ *  - Quantity correction: bhul/nosto/haralo/paoa stock thik kora (karon er dhoron shoho; device record na)
+ *  - IMEI write-off: haralo/churi/nosto phone stock theke bad
+ *  - Opening stock: shuru r stock (kena dam shoho, average cost e jog); IMEI wala hole protiti phone er IMEI
+ *  - Branch transfer: ek branch theke arek branch (mot stock bodlay na)
+ * Shob request age "pending"; approve korle transaction o lock er bhitore abar jachai kore apply hoy.
+ * Ekoi form token (request_token) duibar ashle ekta request; ekoi adjustment er stock line duibar na (key).
  */
 class StockAdjustmentService
 {
@@ -25,8 +30,15 @@ class StockAdjustmentService
     public function request(array $data, User $user): StockAdjustment
     {
         return DB::transaction(function () use ($data, $user) {
+            $token = trim((string) ($data['request_token'] ?? '')) ?: null;
+            if ($token && ($existing = StockAdjustment::where('request_token', $token)->first())) {
+                return $existing;
+            }
+
             $stock = MainStock::with(['product', 'ram', 'rom', 'color'])->lockForUpdate()->findOrFail($data['main_stock_id']);
             $branch = Branch::where('status', 1)->findOrFail($data['branch_id']);
+            $toBranchId = null;
+            $unitCost = null;
 
             if ($data['type'] === StockAdjustment::TYPE_IMEI_REGISTRATION) {
                 // protiti phone ekta line: "IMEI" ba dual-SIM "IMEI1/IMEI2"
@@ -39,10 +51,20 @@ class StockAdjustmentService
                 $devices = $this->writeOffDevices($stock, ProductImei::parseList($data['imeis'] ?? ''), false);
                 $imeis = $devices->pluck('imei_no')->all();
                 $quantity = -count($imeis);
+            } elseif ($data['type'] === StockAdjustment::TYPE_OPENING_STOCK) {
+                $imeis = ProductImei::parseList($data['imeis'] ?? '') ?: null;
+                $quantity = (int) ($data['quantity'] ?? 0);
+                $unitCost = round((float) ($data['unit_cost'] ?? -1), 2);
+                $numbers = $this->validateOpening($stock, $quantity, $unitCost, $imeis ?? []);
+                $this->imeiService->assertNotPendingRegistration($numbers);
+            } elseif ($data['type'] === StockAdjustment::TYPE_TRANSFER) {
+                $toBranchId = (int) Branch::where('status', 1)->findOrFail($data['to_branch_id'] ?? 0)->id;
+                [$quantity, $imeis] = $this->validateTransfer($stock, $branch->id, $toBranchId, (int) ($data['quantity'] ?? 0),
+                    ProductImei::parseList($data['imeis'] ?? ''), false);
             } else {
                 $imeis = null;
                 $quantity = (int) ($data['quantity'] ?? 0);
-                $this->validateCorrection($stock, $quantity);
+                $this->validateCorrection($stock, $quantity, $data['reason_type'] ?? null);
             }
 
             $adjustment = StockAdjustment::create([
@@ -50,16 +72,22 @@ class StockAdjustmentService
                 'type'                  => $data['type'],
                 'main_stock_id'         => $stock->id,
                 'branch_id'             => $branch->id,
+                'to_branch_id'          => $toBranchId,
                 'quantity'              => $quantity,
+                'unit_cost'             => $unitCost,
                 'imeis'                 => $imeis,
                 'verified_model_number' => $data['verified_model_number'] ?? null,
                 'reason'                => $data['reason'],
+                'reason_type'           => $data['reason_type'] ?? null,
+                'request_token'         => $token,
+                'stock_count_id'        => $data['stock_count_id'] ?? null,
                 'status'                => StockAdjustment::STATUS_PENDING,
                 'requested_by'          => $user->id,
             ]);
 
             AuditLogger::log('stock_adjustment.requested', $adjustment, null, $adjustment->only([
-                'adjustment_no', 'type', 'main_stock_id', 'branch_id', 'quantity', 'imeis', 'verified_model_number', 'reason',
+                'adjustment_no', 'type', 'main_stock_id', 'branch_id', 'to_branch_id', 'quantity', 'unit_cost', 'imeis',
+                'verified_model_number', 'reason', 'reason_type',
             ]));
 
             return $adjustment;
@@ -78,6 +106,7 @@ class StockAdjustmentService
 
             $stock = MainStock::with(['product', 'ram', 'rom', 'color'])->lockForUpdate()->findOrFail($adjustment->main_stock_id);
             $stockBefore = $stock->quantity;
+            $key = 'adjustment:' . $adjustment->id;
 
             if ($adjustment->type === StockAdjustment::TYPE_IMEI_REGISTRATION) {
                 // pending thakar somoy obostha bodlate pare, tai lock er bhitore abar jachai
@@ -93,16 +122,27 @@ class StockAdjustmentService
                 foreach ($devices as $device) {
                     $this->imeiService->writeOff($device, $adjustment, $adjustment->reason);
                 }
-                $this->stockService->move($stock, -$devices->count(), StockService::ADJUSTMENT, $adjustment, $adjustment->reason, $adjustment->branch_id);
+                $this->stockService->move($stock, -$devices->count(), $adjustment->movementType(), $adjustment, $adjustment->reason, $adjustment->branch_id, $key);
+            } elseif ($adjustment->type === StockAdjustment::TYPE_OPENING_STOCK) {
+                $this->applyOpening($adjustment, $stock, $key);
+            } elseif ($adjustment->type === StockAdjustment::TYPE_TRANSFER) {
+                [$quantity, $numbers] = $this->validateTransfer($stock, $adjustment->branch_id, $adjustment->to_branch_id,
+                    (int) $adjustment->quantity, (array) $adjustment->imeis, true);
+                foreach ($numbers ? $this->transferDevices($stock, $adjustment->branch_id, $numbers, true) : [] as $device) {
+                    $this->imeiService->transfer($device, $adjustment->to_branch_id, $adjustment, $adjustment->reason);
+                }
+                // IMEI wala hole phone e hishab (purono ledger e branch na thakte pare), na hole branch er ledger theke
+                $this->stockService->transfer($stock, $quantity, $adjustment->branch_id, $adjustment->to_branch_id, $adjustment,
+                    $adjustment->reason, $key, !$numbers);
             } else {
-                $this->validateCorrection($stock, $adjustment->quantity);
-                $this->stockService->move($stock, $adjustment->quantity, StockService::ADJUSTMENT, $adjustment, $adjustment->reason, $adjustment->branch_id);
+                $this->validateCorrection($stock, $adjustment->quantity, $adjustment->reason_type);
+                $this->stockService->move($stock, $adjustment->quantity, $adjustment->movementType(), $adjustment, $adjustment->reason, $adjustment->branch_id, $key);
             }
 
             $adjustment->update([
                 'status'       => StockAdjustment::STATUS_APPROVED,
                 'stock_before' => $stockBefore,
-                'stock_after'  => $stock->quantity,
+                'stock_after'  => $stock->fresh()->quantity,
                 'reviewed_by'  => $reviewer->id,
                 'reviewed_at'  => now(),
                 'review_note'  => $note,
@@ -110,7 +150,7 @@ class StockAdjustmentService
 
             AuditLogger::log('stock_adjustment.approved', $adjustment,
                 ['status' => StockAdjustment::STATUS_PENDING, 'stock' => $stockBefore],
-                ['status' => StockAdjustment::STATUS_APPROVED, 'stock' => $stock->quantity, 'review_note' => $note]);
+                ['status' => StockAdjustment::STATUS_APPROVED, 'stock' => $adjustment->stock_after, 'review_note' => $note]);
 
             return $adjustment;
         });
@@ -190,6 +230,102 @@ class StockAdjustmentService
     }
 
     /**
+     * Opening stock: qty > 0, kena dam >= 0; IMEI lage emon product e protiti phone er IMEI (qty = sonkhya),
+     * je IMEI kokhono dokan theke ber hoy ni ar ekhon stock e nei. Fere: IMEI number gulo.
+     */
+    private function validateOpening(MainStock $stock, int $quantity, float $unitCost, array $imeis): array
+    {
+        $label = $stock->variantLabel();
+        if ($quantity < 1) {
+            throw new \Exception("{$label}: opening quantity must be at least 1.");
+        }
+        if ($unitCost < 0) {
+            throw new \Exception("{$label}: enter the unit cost of the opening stock.");
+        }
+
+        $devices = ProductImei::parseDevices(implode(',', $imeis));
+        $this->imeiService->assertProductRules($stock->product, $quantity, $devices, $label);
+        $numbers = $this->imeiService->assertNewDevices($stock->product, $devices, $label);
+        $this->imeiService->assertNotActive($numbers);
+        $this->imeiService->assertNeverLeftStock($numbers);
+
+        return $numbers;
+    }
+
+    private function applyOpening(StockAdjustment $adjustment, MainStock $stock, string $key): void
+    {
+        $this->validateOpening($stock, (int) $adjustment->quantity, (float) $adjustment->unit_cost, (array) $adjustment->imeis);
+
+        // weighted average (ager stock er dam nosto na kore)
+        $qty = (int) $adjustment->quantity;
+        $oldAvg = (float) $stock->average_purchase_price;
+        $current = (int) $stock->quantity;
+        $stock->average_purchase_price = round(($current * $oldAvg + $qty * (float) $adjustment->unit_cost) / ($current + $qty), 2);
+        PriceHistory::record($stock->product, $stock, PriceHistory::AVERAGE_COST, $oldAvg, $stock->average_purchase_price, 'opening_stock', $adjustment);
+
+        $this->stockService->move($stock, $qty, StockService::OPENING, $adjustment, $adjustment->reason, $adjustment->branch_id, $key);
+
+        foreach (ProductImei::parseDevices(implode(',', (array) $adjustment->imeis)) as [$imei1, $imei2]) {
+            $this->imeiService->register($stock->product, $stock->id, $adjustment->branch_id, $imei1, $imei2,
+                ImeiService::REGISTRATION, $adjustment, 'Opening stock: ' . $adjustment->reason);
+        }
+    }
+
+    /**
+     * Transfer: IMEI wala variant hole phone gulo (source branch e, available/damaged), qty = sonkhya;
+     * na hole qty, source branch er ledger e jotota ache tar beshi na. Fere [qty, IMEI 1 number].
+     */
+    private function validateTransfer(MainStock $stock, int $fromBranchId, ?int $toBranchId, int $quantity, array $numbers, bool $lock): array
+    {
+        $label = $stock->variantLabel();
+        if (!$toBranchId || $toBranchId === $fromBranchId) {
+            throw new \Exception('Choose a different branch to transfer to.');
+        }
+
+        $usesImei = $stock->product->requiresImei() || self::activeImeiCount($stock) > 0;
+        if ($usesImei) {
+            $devices = $this->transferDevices($stock, $fromBranchId, $numbers, $lock);
+            return [$devices->count(), $devices->pluck('imei_no')->all()];
+        }
+
+        if ($numbers) {
+            throw new \Exception("{$label} has no IMEI; enter a quantity instead.");
+        }
+        if ($quantity < 1) {
+            throw new \Exception("{$label}: transfer quantity must be at least 1.");
+        }
+        $available = StockService::branchBalance($stock->id, $fromBranchId);
+        if ($quantity > $available) {
+            throw new \Exception("{$label}: only {$available} in the source branch, cannot transfer {$quantity}.");
+        }
+
+        return [$quantity, null];
+    }
+
+    private function transferDevices(MainStock $stock, int $fromBranchId, array $numbers, bool $lock)
+    {
+        $numbers = array_values(array_unique(array_filter($numbers)));
+        if (!$numbers) {
+            throw new \Exception("{$stock->variantLabel()}: enter the IMEI of each phone to transfer.");
+        }
+
+        $devices = ProductImei::where('main_stock_id', $stock->id)
+            ->where(fn ($q) => $q->whereIn('imei_no', $numbers)->orWhereIn('imei_no_2', $numbers))
+            ->whereIn('status', [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_DAMAGED])
+            ->where(fn ($q) => $q->where('branch_id', $fromBranchId)->orWhereNull('branch_id'))
+            ->when($lock, fn ($q) => $q->lockForUpdate())
+            ->get();
+
+        $found = $devices->flatMap(fn ($d) => [$d->imei_no, $d->imei_no_2])->filter()->all();
+        $missing = array_diff($numbers, $found);
+        if ($missing) {
+            throw new \Exception("{$stock->variantLabel()}: these IMEI are not available in the source branch: " . implode(', ', $missing));
+        }
+
+        return $devices->unique('id')->values();
+    }
+
+    /**
      * Write off er phone: ei variant er, dokhole (available/repair/damaged; reserved hole age unreserve).
      */
     private function writeOffDevices(MainStock $stock, array $numbers, bool $lock)
@@ -214,12 +350,23 @@ class StockAdjustmentService
         return $devices->unique('id')->values();
     }
 
-    private function validateCorrection(MainStock $stock, int $quantity): void
+    private function validateCorrection(MainStock $stock, int $quantity, ?string $reasonType = null): void
     {
         $label = $stock->variantLabel();
 
         if ($quantity == 0) {
             throw new \Exception('Correction quantity cannot be zero.');
+        }
+
+        if ($reasonType && !isset(StockAdjustment::REASONS[$reasonType])) {
+            throw new \Exception('Unknown reason type.');
+        }
+        // damaged/lost/stolen/expired mane stock kome; "found" mane bare
+        if ($quantity > 0 && in_array($reasonType, ['damaged', 'lost', 'stolen', 'expired'], true)) {
+            throw new \Exception("{$label}: damaged or lost stock must be a negative quantity.");
+        }
+        if ($quantity < 0 && $reasonType === 'found') {
+            throw new \Exception("{$label}: found stock must be a positive quantity.");
         }
 
         if ($quantity > 0 && $stock->product->requiresImei()) {

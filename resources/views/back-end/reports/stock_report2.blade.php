@@ -65,6 +65,24 @@
                                 <option value="">All Products</option>
                             </select>
                         </div>
+                        <div class="col-md-2 mb-2">
+                            <label>Branch</label>
+                            <select name="branch_id" class="form-control">
+                                <option value="">All branches (total)</option>
+                                @foreach($branches as $branch)
+                                    <option value="{{ $branch->id }}" @selected(request('branch_id') == $branch->id)>{{ $branch->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <label>Status</label>
+                            <select name="status" class="form-control">
+                                <option value="">Any</option>
+                                <option value="in" @selected(request('status') === 'in')>In stock</option>
+                                <option value="low" @selected(request('status') === 'low')>Low stock</option>
+                                <option value="out" @selected(request('status') === 'out')>Out of stock</option>
+                            </select>
+                        </div>
                         <div class="col-md-3 marginTop">
                             <button type="submit" class="btn btn-primary"><i class="fa fa-search"></i> Filter</button>
                             <a href="{{ route('reports.stock') }}" class="btn btn-secondary"><i class="fa fa-sync"></i> Reset</a>
@@ -105,8 +123,11 @@
                                 <th>Product Name</th>
                                 <th>Variant</th>
                                 <th>Qty</th>
+                                <th title="IMEI: available / reserved / damaged / in repair">Avail / Res / Dmg / Repair</th>
+                                <th>Avg Cost</th>
                                 <th>Total Value</th>
                                 <th>Status</th>
+                                <th>Ledger</th>
                             </tr>
                         </thead>
                         <tbody id="stockTableBody">
@@ -114,14 +135,21 @@
                             <tr>
                                 <td>{{ $key + 1 }}</td>
                                 <td class="p-name">{{ $stock->product->product_name ?? 'N/A' }}</td>
-                                <td>{{ $stock->ram->ram_name ?? '-' }} | {{ $stock->color->color_name ?? '-' }}</td>
-                                <td class="font-weight-bold qty-val">{{ $stock->quantity }}</td>
-                                <td>{{ $stock->quantity * $stock->average_purchase_price }}</td>
+                                <td>{{ $stock->attributeLabel() }}</td>
+                                <td class="font-weight-bold qty-val">{{ $stock->display_qty }}</td>
                                 <td>
-                                    @if($stock->quantity <= 0) <span class="badge badge-danger">Out of Stock</span>
-                                    @elseif($stock->isLowStock()) <span class="badge badge-warning">Low Stock</span>
+                                    @if($stock->imei_available + $stock->imei_reserved + $stock->imei_damaged + $stock->imei_repair)
+                                        {{ $stock->imei_available }} / {{ $stock->imei_reserved }} / {{ $stock->imei_damaged }} / {{ $stock->imei_repair }}
+                                    @else - @endif
+                                </td>
+                                <td>{{ number_format($stock->average_purchase_price, 2) }}</td>
+                                <td>{{ number_format(max(0, $stock->display_qty) * $stock->average_purchase_price, 2) }}</td>
+                                <td>
+                                    @if($stock->display_qty <= 0) <span class="badge badge-danger">Out of Stock</span>
+                                    @elseif($stock->display_qty <= $stock->lowStockThreshold()) <span class="badge badge-warning">Low Stock</span>
                                     @else <span class="badge badge-success">In Stock</span> @endif
                                 </td>
+                                <td><a href="{{ route('reports.stock_ledger', ['main_stock_id' => $stock->id, 'branch_id' => request('branch_id')]) }}" class="btn btn-xs btn-sm btn-outline-info"><i class="fa fa-book"></i></a></td>
                             </tr>
                             @endforeach
                         </tbody>

@@ -13,6 +13,8 @@
 
         <form action="{{ route('stock-reconciliation.store') }}" method="POST" id="adjustmentForm">
             @csrf
+            {{-- ekoi form duibar submit hole ekta request --}}
+            <input type="hidden" name="request_token" value="{{ old('request_token', $token) }}">
             <div class="card-body">
                 @if ($errors->any())
                     <div class="alert alert-danger">
@@ -82,6 +84,20 @@
                             <strong>Write off phones</strong> - registered phones that were lost, stolen or destroyed; they leave stock and keep their history
                         </label>
                     </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="type" id="typeOpening" value="opening_stock"
+                            {{ old('type') == 'opening_stock' ? 'checked' : '' }}>
+                        <label class="form-check-label" for="typeOpening">
+                            <strong>Opening stock</strong> - stock that was here before the software (new shop or new variant), with its cost; phones need their IMEI
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="type" id="typeTransfer" value="transfer"
+                            {{ old('type') == 'transfer' ? 'checked' : '' }}>
+                        <label class="form-check-label" for="typeTransfer">
+                            <strong>Transfer to another branch</strong> - total stock does not change; phones move by IMEI, accessories by quantity
+                        </label>
+                    </div>
                 </div>
 
                 <div id="registrationFields">
@@ -114,6 +130,54 @@
                             <textarea name="imeis" class="form-control" rows="4" placeholder="15-digit IMEI">{{ old('type') == 'imei_write_off' ? old('imeis') : '' }}</textarea>
                             <small class="text-muted">Only phones of the selected variant that are Available, In Repair or Damaged. Unreserve a reserved phone first.</small>
                         </div>
+                        <div class="col-md-4 form-group">
+                            <label class="font-weight-bold">What happened? *</label>
+                            <select name="reason_type" class="form-control" required>
+                                @foreach(['lost', 'stolen', 'damaged', 'expired', 'other'] as $key)
+                                    <option value="{{ $key }}" @selected(old('reason_type') === $key)>{{ \App\Models\StockAdjustment::REASONS[$key] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="openingFields" style="display:none">
+                    <div class="row">
+                        <div class="col-md-3 form-group">
+                            <label class="font-weight-bold">Quantity *</label>
+                            <input type="number" name="quantity" min="1" class="form-control" value="{{ old('quantity') }}">
+                        </div>
+                        <div class="col-md-3 form-group">
+                            <label class="font-weight-bold">Unit cost *</label>
+                            <input type="number" name="unit_cost" min="0" step="0.01" class="form-control" value="{{ old('unit_cost') }}">
+                            <small class="text-muted">Added to the variant's average cost.</small>
+                        </div>
+                        <div class="col-md-6 form-group">
+                            <label class="font-weight-bold">IMEI <small class="text-muted">(phones: one per line, IMEI1/IMEI2 for dual-SIM; count must equal quantity)</small></label>
+                            <textarea name="imeis" class="form-control" rows="4" placeholder="15-digit IMEI">{{ old('type') == 'opening_stock' ? old('imeis') : '' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="transferFields" style="display:none">
+                    <div class="row">
+                        <div class="col-md-4 form-group">
+                            <label class="font-weight-bold">To branch *</label>
+                            <select name="to_branch_id" class="form-control">
+                                <option value="">Select branch</option>
+                                @foreach($allBranches as $branch)
+                                    <option value="{{ $branch->id }}" @selected(old('to_branch_id') == $branch->id)>{{ $branch->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-3 form-group">
+                            <label class="font-weight-bold">Quantity <small class="text-muted">(no IMEI)</small></label>
+                            <input type="number" name="quantity" min="1" class="form-control" value="{{ old('quantity') }}">
+                        </div>
+                        <div class="col-md-5 form-group">
+                            <label class="font-weight-bold">IMEI <small class="text-muted">(phones: one per line)</small></label>
+                            <textarea name="imeis" class="form-control" rows="3" placeholder="15-digit IMEI">{{ old('type') == 'transfer' ? old('imeis') : '' }}</textarea>
+                        </div>
                     </div>
                 </div>
 
@@ -123,6 +187,15 @@
                             <label class="font-weight-bold">Quantity change *</label>
                             <input type="number" name="quantity" class="form-control" value="{{ old('quantity') }}" placeholder="-2 to remove, +3 to add">
                             <small class="text-muted">Smartphones can only be reduced here. New phones must come through Purchase.</small>
+                        </div>
+                        <div class="col-md-4 form-group">
+                            <label class="font-weight-bold">Reason type *</label>
+                            <select name="reason_type" class="form-control" required>
+                                @foreach(\App\Models\StockAdjustment::REASONS as $key => $label)
+                                    <option value="{{ $key }}" @selected(old('reason_type', 'count_error') === $key)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">Damaged/lost/stolen/expired reduce stock; Found adds.</small>
                         </div>
                     </div>
                 </div>
@@ -153,7 +226,8 @@
         function toggleType() {
             let type = $('input[name="type"]:checked').val();
             // lukano section er input pathano hoy na (duita "imeis" textarea ache)
-            [['#registrationFields', 'imei_registration'], ['#writeOffFields', 'imei_write_off'], ['#correctionFields', 'quantity_correction']]
+            [['#registrationFields', 'imei_registration'], ['#writeOffFields', 'imei_write_off'], ['#correctionFields', 'quantity_correction'],
+             ['#openingFields', 'opening_stock'], ['#transferFields', 'transfer']]
                 .forEach(([section, value]) => {
                     $(section).toggle(type === value).find(':input').prop('disabled', type !== value);
                 });

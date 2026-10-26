@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Models\Sale;
 use App\Models\SaleDetail;
 use App\Models\MainStock;
+use App\Models\Branch;
 use App\Models\CustomerLedger;
 use App\Models\ProductImei;
 use App\Services\AuditLogger;
@@ -155,8 +156,9 @@ public function store(Request $request)
                 throw new \Exception("{$label} is inactive and cannot be sold.");
             }
 
-            if ($qty > $stock->quantity) {
-                throw new \Exception("Not enough stock for {$label}. Available: {$stock->quantity}, requested: {$qty}.");
+            // stock row lock kora (upore); ei mot stock er beshi na (config dile IMEI chara product e negative jete pare)
+            if ($qty > $stock->quantity && !StockService::allowsNegative($stock)) {
+                throw new \Exception("Not enough stock for {$label}. Available: {$stock->quantity}, requested: {$qty}." . StockService::negativeHint($stock));
             }
 
             $imeiIds = array_values(array_unique(array_filter((array) ($request->imeis[$key] ?? []))));
@@ -224,7 +226,9 @@ public function store(Request $request)
                 $this->imeiService->sell($imei, $sale, $item->id, (int) $sale->customer_id);
             }
 
-            $this->stockService->move($stock, -$qty, StockService::SALE, $sale);
+            // phone je branch e chilo sei branch theke; IMEI chara hole user er branch. Ekoi line duibar na (key)
+            $branchId = $imeis->pluck('branch_id')->filter()->unique()->count() === 1 ? (int) $imeis->first()->branch_id : Branch::currentId();
+            $this->stockService->move($stock, -$qty, StockService::SALE, $sale, null, $branchId, 'sale:' . $item->id);
         }
 
         // invoice er hishab

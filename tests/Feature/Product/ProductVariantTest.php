@@ -245,7 +245,7 @@ class ProductVariantTest extends SecurityTestCase
         }
 
         // StockService diye hoy, ledger shoho
-        DB::transaction(fn () => app(StockService::class)->move($variant, 3, StockService::ADJUSTMENT));
+        $this->stockIn($variant, 3);
         $this->assertSame(3, $variant->fresh()->quantity);
         $this->assertSame(3, (int) StockMovement::where('main_stock_id', $variant->id)->sum('quantity'));
     }
@@ -269,6 +269,15 @@ class ProductVariantTest extends SecurityTestCase
     }
 
     // ---- workflows -------------------------------------------------------------
+
+    // stock e mal (protiti movement er reference document lage - ekta approved adjustment)
+    private function stockIn(MainStock $variant, int $qty): void
+    {
+        $doc = \App\Models\StockAdjustment::create(['adjustment_no' => 'ADJ-T' . uniqid(), 'type' => \App\Models\StockAdjustment::TYPE_QUANTITY_CORRECTION,
+            'main_stock_id' => $variant->id, 'branch_id' => $this->ids['branchA'], 'quantity' => $qty, 'reason' => 'Test stock',
+            'status' => 'approved', 'requested_by' => $this->admin()->id]);
+        DB::transaction(fn () => app(StockService::class)->move($variant, $qty, StockService::ADJUSTMENT, $doc));
+    }
 
     private function purchase(array $item)
     {
@@ -323,7 +332,7 @@ class ProductVariantTest extends SecurityTestCase
     {
         $product = $this->createPhone();
         $variant = $product->variants()->sole();
-        DB::transaction(fn () => app(StockService::class)->move($variant, 1, StockService::ADJUSTMENT));
+        $this->stockIn($variant, 1);
         $imei = ProductImei::create(['product_id' => $product->id, 'main_stock_id' => $variant->id, 'imei_no' => '356938035643809', 'status' => 1]);
 
         $this->actingAs($this->admin())->post(route('product.status.change', $product->id), ['status' => 0])->assertJson(['success' => true]);
@@ -358,7 +367,7 @@ class ProductVariantTest extends SecurityTestCase
 
         $this->actingAs($this->admin())->getJson(url('sale/find-by-imei/8809999000011'))->assertJson(['success' => false]); // stock 0
 
-        DB::transaction(fn () => app(StockService::class)->move($variant, 5, StockService::ADJUSTMENT));
+        $this->stockIn($variant, 5);
         $this->actingAs($this->admin())->getJson(url('sale/find-by-imei/8809999000011'))
             ->assertJson(['success' => true, 'stock_id' => $variant->id, 'imei_id' => null]);
     }
@@ -369,7 +378,7 @@ class ProductVariantTest extends SecurityTestCase
     {
         $product = $this->createPhone();
         $variant = $product->variants()->sole();
-        DB::transaction(fn () => app(StockService::class)->move($variant, 4, StockService::ADJUSTMENT));
+        $this->stockIn($variant, 4);
         DB::table('main_stocks')->where('id', $variant->id)->update(['average_purchase_price' => 18250.50]);
 
         $this->actingAs($this->admin())->put(route('product.update', $product->id), $this->phoneData([
@@ -388,7 +397,7 @@ class ProductVariantTest extends SecurityTestCase
     {
         $product = $this->createPhone();
         $old = $product->variants()->sole();
-        DB::transaction(fn () => app(StockService::class)->move($old, 2, StockService::ADJUSTMENT));
+        $this->stockIn($old, 2);
 
         $this->actingAs($this->admin())->put(route('product.update', $product->id), $this->phoneData(['color_id' => $this->attr['blue']]))
             ->assertSessionHasNoErrors();
@@ -431,7 +440,7 @@ class ProductVariantTest extends SecurityTestCase
         config(['inventory.low_stock_threshold' => 5]);
         $product = $this->createPhone(['low_stock_threshold' => null]);
         $variant = $product->variants()->sole();
-        DB::transaction(fn () => app(StockService::class)->move($variant, 4, StockService::ADJUSTMENT));
+        $this->stockIn($variant, 4);
 
         $this->assertSame(5, $variant->fresh()->lowStockThreshold());
         $this->assertTrue($variant->fresh()->isLowStock());
@@ -460,7 +469,7 @@ class ProductVariantTest extends SecurityTestCase
 
         $used = $this->createPhone();
         $variant = $used->variants()->sole();
-        DB::transaction(fn () => app(StockService::class)->move($variant, 1, StockService::ADJUSTMENT));
+        $this->stockIn($variant, 1);
 
         $this->actingAs($this->admin())->delete(route('product.delete', $used->id))->assertSessionHas('error');
         $this->actingAs($this->admin())->delete(route('product.variant.delete', $variant->id))->assertSessionHas('error', fn ($e) => str_contains($e, 'Inactive'));

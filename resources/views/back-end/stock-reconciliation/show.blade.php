@@ -14,12 +14,24 @@
             <table class="table table-bordered">
                 <tr><th width="25%">Status</th><td>@include('back-end.stock-reconciliation.status', ['status' => $adjustment->status])</td></tr>
                 <tr><th>Product / Variant</th><td>#{{ $adjustment->main_stock_id }} {{ $adjustment->mainStock?->variantLabel() }}</td></tr>
-                <tr><th>Branch / Warehouse</th><td>{{ $adjustment->branch->name ?? '-' }}</td></tr>
+                <tr><th>{{ $adjustment->type === 'transfer' ? 'From branch' : 'Branch / Warehouse' }}</th><td>{{ $adjustment->branch->name ?? '-' }}</td></tr>
+                @if($adjustment->type === 'transfer')
+                    <tr><th>To branch</th><td>{{ $adjustment->toBranch->name ?? '-' }}</td></tr>
+                @endif
                 @if($adjustment->type === 'imei_registration')
                     <tr><th>IMEI ({{ count($adjustment->imeis ?? []) }})</th><td>{{ implode(', ', $adjustment->imeis ?? []) }}</td></tr>
                     <tr><th>Model number on device</th><td>{{ $adjustment->verified_model_number }}</td></tr>
                 @else
-                    <tr><th>Quantity change</th><td>{{ $adjustment->quantity > 0 ? '+' : '' }}{{ $adjustment->quantity }}</td></tr>
+                    <tr><th>Quantity {{ $adjustment->type === 'transfer' ? '' : 'change' }}</th><td>{{ $adjustment->quantity > 0 && $adjustment->type !== 'transfer' ? '+' : '' }}{{ $adjustment->quantity }}</td></tr>
+                    @if($adjustment->imeis)
+                        <tr><th>IMEI ({{ count($adjustment->imeis) }})</th><td>{{ implode(', ', $adjustment->imeis) }}</td></tr>
+                    @endif
+                    @if($adjustment->unit_cost !== null)
+                        <tr><th>Unit cost</th><td>{{ number_format($adjustment->unit_cost, 2) }}</td></tr>
+                    @endif
+                @endif
+                @if($adjustment->reason_type)
+                    <tr><th>Reason type</th><td>{{ $adjustment->reasonLabel() }}</td></tr>
                 @endif
                 <tr><th>Reason</th><td>{{ $adjustment->reason }}</td></tr>
                 <tr><th>Requested by</th><td>{{ $adjustment->requester->name ?? '-' }} at {{ $adjustment->created_at->format('d-M-Y h:i A') }}</td></tr>

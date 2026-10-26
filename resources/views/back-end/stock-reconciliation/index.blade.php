@@ -86,7 +86,7 @@
                                 <td>{{ $adjustment->created_at->format('d-M-Y h:i A') }}</td>
                                 <td>{{ $adjustment->typeLabel() }}</td>
                                 <td>{{ $adjustment->mainStock?->variantLabel() }}</td>
-                                <td>{{ $adjustment->branch->name ?? '-' }}</td>
+                                <td>{{ $adjustment->branch->name ?? '-' }}{{ $adjustment->toBranch ? ' → ' . $adjustment->toBranch->name : '' }}</td>
                                 <td class="text-right">{{ $adjustment->quantity > 0 && $adjustment->type === 'quantity_correction' ? '+' : '' }}{{ $adjustment->quantity }}</td>
                                 <td>{{ $adjustment->requester->name ?? '-' }}</td>
                                 <td>
