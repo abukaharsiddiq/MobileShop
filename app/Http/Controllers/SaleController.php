@@ -127,6 +127,12 @@ public function store(Request $request)
 
         $canSellBelowCost = $request->user()->can('sell below cost');
 
+        // inactive customer ke notun bikri na (ager due/ferot cholbe)
+        $customer = Customer::lockForUpdate()->findOrFail($request->customer_id);
+        if ((int) $customer->status !== 1) {
+            throw new \Exception("{$customer->name} is inactive. Activate the customer before selling.");
+        }
+
         $sale = new Sale();
         $sale->invoice_no      = $this->invoiceNumbers->nextSale();
         $sale->customer_id     = $request->customer_id;

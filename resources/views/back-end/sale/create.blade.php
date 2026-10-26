@@ -311,9 +311,19 @@
         };
         $.post("{{ route('customer.quick.store') }}", data, function(res) {
             if(res.success) {
-                $('#customer_id').append(new Option(res.customer.name, res.customer.id, true, true)).trigger('change');
+                $('#customer_id').append(new Option(res.customer.name + ' (' + res.customer.phone + ')', res.customer.id, true, true)).trigger('change');
                 $('#customerModal').modal('hide');
             }
+        }).fail(function(xhr) {
+            let res = xhr.responseJSON || {};
+            // ekoi number er customer age theke thakle setai bachai
+            if (res.existing) {
+                $('#customer_id').val(res.existing.id).trigger('change');
+                $('#customerModal').modal('hide');
+                toastr.warning(res.message);
+                return;
+            }
+            toastr.error(res.errors ? Object.values(res.errors).flat().join('<br>') : (res.message || 'Could not save customer'));
         });
     }
 

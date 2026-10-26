@@ -59,6 +59,8 @@ class PermissionSeeder extends Seeder
         }
 
         return array_merge($permissions, [
+            ['read customer details', 'Customer'],               // profile, ledger, statement, kena/payment itihash
+            ['update customer opening balance', 'Customer'],
             ['approve purchase', 'Purchase'],                    // stock/ledger e jay (draft/pending -> approved)
             ['create supplier payment', 'Supplier Payment'],       // taka deya, agrim, supplier er refund
             ['void supplier payment', 'Supplier Payment'],
