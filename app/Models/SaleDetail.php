@@ -14,6 +14,7 @@ class SaleDetail extends Model
         'rom_id',
         'color_id',
         'quantity',
+        'returned_quantity',
         'sale_price',
         'purchase_price',
         'item_discount',

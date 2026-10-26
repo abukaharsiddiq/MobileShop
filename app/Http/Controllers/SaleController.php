@@ -218,6 +218,12 @@ public function delete(Request $request, $id)
     return $this->cancel($request, $id);
 }
 
+// POS: customer bachai korle tar store credit (sale return theke)
+public function customerCredit($id)
+{
+    return response()->json(['store_credit' => SalePaymentService::availableCredit((int) Customer::findOrFail($id)->id)]);
+}
+
 // POS khoja: barcode, SKU, product naam/model ba IMEI (IMEI hole oi phone ta sathe)
 public function searchProducts(Request $request)
 {

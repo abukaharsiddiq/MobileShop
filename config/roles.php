@@ -33,7 +33,7 @@ return [
             'create purchase return', 'read purchase return',
             'create customer', 'read customer', 'update customer', 'read customer details',
             'create sale', 'read sale', 'update sale',
-            'create return', 'read return',
+            'create return', 'read return', 'approve return',
             'create installment', 'read installment',
             'create expense', 'read expense',
             'create attendance', 'read attendance',

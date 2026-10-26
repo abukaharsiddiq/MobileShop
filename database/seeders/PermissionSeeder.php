@@ -69,6 +69,7 @@ class PermissionSeeder extends Seeder
             ['read purchase return', 'Purchase Return'],
             ['create return', 'Sale Return'],
             ['read return', 'Sale Return'],
+            ['approve return', 'Sale Return'],                    // pending return approve/reject, exchange
             ['create installment', 'Installment'],
             ['read installment', 'Installment'],
             ['create attendance', 'Attendance'],

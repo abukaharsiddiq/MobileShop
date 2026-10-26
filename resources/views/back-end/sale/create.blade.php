@@ -197,6 +197,8 @@
                                 </div>
                                 <button type="button" class="btn btn-success add-customer" data-toggle="modal" data-target="#customerModal" title="New customer"><i class="fa fa-plus"></i></button>
                             </div>
+                            {{-- sale return er store credit thakle "Store Credit" method e khoroch kora jay --}}
+                            <small id="creditInfo" class="d-block mt-2 text-success font-weight-bold" style="display:none"></small>
                             <div class="row mt-3">
                                 <div class="col-6">
                                     <label class="pos-label">Date</label>
@@ -291,7 +293,13 @@
     const methods = @json($methods);
 
     $(document).ready(function() {
-        $('#customer_id').select2({ width: '100%' });
+        $('#customer_id').select2({ width: '100%' }).on('change', function() {
+            let info = $('#creditInfo').hide();
+            if (!$(this).val()) return;
+            $.get("{{ url('sale/customer-credit') }}/" + $(this).val(), function(res) {
+                if (res.store_credit > 0) info.text('Store credit available: ' + fmt(res.store_credit) + ' (use "Store Credit" in payment)').show();
+            });
+        });
         addPayment('Cash', '');
         toggleInstallment();
         refreshCart();
@@ -549,7 +557,8 @@
         return row;
     }
     function togglePaymentRef(select) {
-        let needs = methods[$(select).val()] !== 'cash';
+        // bank/mobile e reference lage; cash ar store credit e na
+        let needs = ['bank', 'mobile'].includes(methods[$(select).val()]);
         $(select).closest('.pay-row').find('.pay-ref').prop('required', needs);
     }
     $(document).on('change', '.pay-method', function() { togglePaymentRef(this); });

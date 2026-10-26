@@ -126,7 +126,7 @@ class CustomerAccountService
             ->selectRaw('COUNT(*) as invoices, COALESCE(SUM(grand_total), 0) as net, COALESCE(SUM(paid_amount), 0) as paid,
                 COALESCE(SUM(due_amount), 0) as due, MIN(sale_date) as first_date, MAX(sale_date) as last_date')
             ->first();
-        $returns = SaleReturn::where('customer_id', $customer->id)
+        $returns = SaleReturn::completed()->where('customer_id', $customer->id)
             ->selectRaw('COUNT(*) as total, COALESCE(SUM(total_refund), 0) as amount, COALESCE(SUM(cash_refund), 0) as cash')
             ->first();
         $ledger = CustomerLedger::where('customer_id', $customer->id)
@@ -147,6 +147,7 @@ class CustomerAccountService
             'balance'           => $balance,
             'due'               => max(0.0, $balance),
             'advance'           => max(0.0, -$balance),
+            'store_credit'      => SalePaymentService::availableCredit($customer->id),
             'opening_balance'   => round((float) $customer->opening_balance, 2),
             'invoices'          => (int) $sales->invoices,
             'gross_sales'       => round($net + $returned, 2),   // ferot er age (invoice er grand_total return e kome)
@@ -278,8 +279,13 @@ class CustomerAccountService
 
         $balance = round((float) $ledger->sum('debit') - (float) $ledger->sum('credit'), 2);
         $invoiceDue = round((float) Sale::where('customer_id', $customer->id)->sum('due_amount'), 2);
-        if ($balance !== round($openingNet + $invoiceDue, 2)) {
-            $issues[] = "Ledger balance {$money($balance)} differs from opening {$money($openingNet)} + invoice dues {$money($invoiceDue)}.";
+        // return er store credit (ekhono khoroch hoy ni) customer er agrim
+        $credit = round((float) SaleReturn::completed()->where('customer_id', $customer->id)->sum('store_credit')
+            - (float) \App\Models\SalePayment::where('customer_id', $customer->id)->where('type', 'sale')->where('channel', 'credit')
+                ->whereHas('sale', fn ($q) => $q->completed())->sum('amount'), 2);
+        if ($balance !== round($openingNet + $invoiceDue - $credit, 2)) {
+            $issues[] = "Ledger balance {$money($balance)} differs from opening {$money($openingNet)} + invoice dues {$money($invoiceDue)}"
+                . ($credit ? " - store credit {$money($credit)}" : '') . '.';
         }
 
         $billed = $ledger->where('transaction_type', 'Sale')->pluck('sale_id')->filter()->flip();
