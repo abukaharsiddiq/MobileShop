@@ -9,6 +9,8 @@ class PurchaseReturnDetail extends Model
     protected $fillable = [
         'purchase_return_id',
         'product_id',
+        'main_stock_id',
+        'purchase_detail_id',
         'ram_id',
         'rom_id',
         'color_id',

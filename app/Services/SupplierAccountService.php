@@ -132,25 +132,41 @@ class SupplierAccountService
         }
     }
 
-    // Purchase muchhar age: bill ar form e deya taka ledger theke jay. Pore deya taka thakle atkay.
-    public function removePurchase(Purchase $purchase): void
+    // Approve kora purchase er pore deya payment (purchase form er ta chara) - thakle cancel hoy na
+    public function assertCancellable(Purchase $purchase): void
     {
         $later = SupplierPayment::active()->where('purchase_id', $purchase->id)
             ->where('source', '!=', SupplierPayment::SOURCE_PURCHASE)->pluck('payment_no');
         if ($later->isNotEmpty()) {
-            throw new \Exception("Cannot delete! Invoice {$purchase->invoice_no} has later payments (" . $later->implode(', ') . '). Void them first.');
+            throw new \Exception("Cannot cancel! Invoice {$purchase->invoice_no} has later payments (" . $later->implode(', ') . '). Void them first.');
+        }
+    }
+
+    /**
+     * Approve kora purchase cancel: bill er ulto line ("Purchase Cancelled") ar purchase form e deya
+     * taka void - ledger e itihash thake, muchhe na. Purchase age thekei cancelled status e save thakte hobe.
+     */
+    public function cancelPurchase(Purchase $purchase, string $reason): void
+    {
+        $this->assertCancellable($purchase);
+
+        foreach (SupplierPayment::active()->where('purchase_id', $purchase->id)->where('source', SupplierPayment::SOURCE_PURCHASE)->get() as $payment) {
+            $this->void($payment, 'Purchase cancelled: ' . $reason);
         }
 
-        $initial = SupplierPayment::where('purchase_id', $purchase->id)->where('source', SupplierPayment::SOURCE_PURCHASE)->get();
-        foreach ($initial as $payment) {
-            AuditLogger::log('supplier_payment.deleted_with_purchase', $payment, $payment->only(['payment_no', 'amount', 'payment_date']), null);
+        $billed = round((float) SupplierLedger::where('purchase_id', $purchase->id)->where('transaction_type', SupplierLedger::PURCHASE)->sum('credit'), 2);
+        if ($billed > 0) {
+            $this->ledger->supplierEntry([
+                'supplier_id'      => $purchase->supplier_id,
+                'date'             => now()->toDateString(),
+                'transaction_type' => SupplierLedger::PURCHASE_CANCEL,
+                'purchase_id'      => $purchase->id,
+                'reference_no'     => $purchase->invoice_no,
+                'debit'            => $billed,
+                'note'             => 'Purchase cancelled: ' . $reason,
+            ]);
         }
 
-        SupplierLedger::whereIn('supplier_payment_id', $initial->pluck('id'))->delete();
-        SupplierPayment::whereIn('id', $initial->pluck('id'))->delete();
-        SupplierLedger::where('purchase_id', $purchase->id)->where('transaction_type', SupplierLedger::PURCHASE)->delete();
-
-        $this->ledger->recalculateSupplier($purchase->supplier_id);
         $this->settle($purchase->supplier_id);
     }
 
@@ -192,6 +208,9 @@ class SupplierAccountService
             $purchase = Purchase::where('supplier_id', $supplier->id)->lockForUpdate()->find($data['purchase_id']);
             if (!$purchase) {
                 throw new \Exception('The selected invoice does not belong to ' . $supplier->name . '.');
+            }
+            if (!$purchase->isApproved()) {
+                throw new \Exception("Invoice {$purchase->invoice_no} is {$purchase->statusLabel()}. Only approved purchases can be paid.");
             }
             $due = round((float) $purchase->due_amount, 2);
             if ($amount > $due) {
@@ -301,11 +320,15 @@ class SupplierAccountService
     public function settle(int $supplierId, bool $apply = true): int
     {
         $voided = SupplierPayment::where('supplier_id', $supplierId)->whereNotNull('voided_at')->pluck('id')->flip();
+        // cancel kora invoice er bill ar tar ulto line duitai bad (net shunno)
+        $cancelled = Purchase::where('supplier_id', $supplierId)->where('status', Purchase::STATUS_CANCELLED)->pluck('id')->flip();
         $rows = SupplierLedger::where('supplier_id', $supplierId)->orderBy('date')->orderBy('id')->get()
-            ->reject(fn ($r) => $r->supplier_payment_id && isset($voided[$r->supplier_payment_id]));
+            ->reject(fn ($r) => $r->supplier_payment_id && isset($voided[$r->supplier_payment_id]))
+            ->reject(fn ($r) => $r->purchase_id && isset($cancelled[$r->purchase_id])
+                && in_array($r->transaction_type, [SupplierLedger::PURCHASE, SupplierLedger::PURCHASE_CANCEL], true));
 
         $purchaseIds = $rows->where('transaction_type', SupplierLedger::PURCHASE)->pluck('purchase_id')->filter()->unique();
-        $query = Purchase::where('supplier_id', $supplierId)->whereIn('id', $purchaseIds);
+        $query = Purchase::approved()->where('supplier_id', $supplierId)->whereIn('id', $purchaseIds);
         $purchases = ($apply ? $query->lockForUpdate() : $query)->get()->keyBy('id');
 
         $targets = [];  // dena: invoice (p{id}) ba onno credit row (l{id})
@@ -408,12 +431,13 @@ class SupplierAccountService
             'due'             => Supplier::dueOf($balance),
             'advance'         => Supplier::advanceOf($balance),
             'opening_balance' => round((float) $supplier->opening_balance, 2),
-            'total_purchase'  => round((float) (clone $ledger)->where('transaction_type', SupplierLedger::PURCHASE)->sum('credit'), 2),
+            'total_purchase'  => round((float) (clone $ledger)->where('transaction_type', SupplierLedger::PURCHASE)->sum('credit')
+                - (float) (clone $ledger)->where('transaction_type', SupplierLedger::PURCHASE_CANCEL)->sum('debit'), 2),
             'total_paid'      => round((float) (clone $payments)->where('type', SupplierPayment::TYPE_PAYMENT)->sum('amount'), 2),
             'total_returned'  => round((float) (clone $ledger)->where('transaction_type', SupplierLedger::PURCHASE_RETURN)->sum('debit'), 2),
             'total_refunded'  => round((float) (clone $payments)->where('type', SupplierPayment::TYPE_REFUND)->sum('amount'), 2),
-            'purchase_count'  => Purchase::where('supplier_id', $supplier->id)->count(),
-            'open_invoices'   => Purchase::where('supplier_id', $supplier->id)->where('due_amount', '>', 0)->count(),
+            'purchase_count'  => Purchase::approved()->where('supplier_id', $supplier->id)->count(),
+            'open_invoices'   => Purchase::approved()->where('supplier_id', $supplier->id)->where('due_amount', '>', 0)->count(),
         ];
     }
 
@@ -450,7 +474,7 @@ class SupplierAccountService
             'rows'      => $rows,
             'debit'     => round((float) $rows->sum('debit'), 2),
             'credit'    => round((float) $rows->sum('credit'), 2),
-            'purchases' => $byType(SupplierLedger::PURCHASE, 'credit'),
+            'purchases' => round($byType(SupplierLedger::PURCHASE, 'credit') - $byType(SupplierLedger::PURCHASE_CANCEL, 'debit'), 2),
             'payments'  => round($byType(SupplierLedger::PAYMENT, 'debit') - $byType(SupplierLedger::PAYMENT_VOID, 'credit'), 2),
             'returns'   => $byType(SupplierLedger::PURCHASE_RETURN, 'debit'),
             'refunds'   => round($byType(SupplierLedger::REFUND, 'credit') - $byType(SupplierLedger::REFUND_VOID, 'debit'), 2),

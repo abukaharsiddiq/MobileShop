@@ -376,7 +376,8 @@ class SupplierManagementTest extends SecurityTestCase
 
     // ---- purchase delete ------------------------------------------------------
 
-    public function test_purchase_delete_is_blocked_by_later_payments_and_cleans_the_ledger(): void
+    // approved purchase muchhe na - cancel hoy, ledger e ulto line ar form er payment void (itihash thake)
+    public function test_purchase_delete_is_blocked_by_later_payments_and_reverses_the_ledger(): void
     {
         $supplier = $this->supplier();
         $this->purchase($supplier, 1000, 300);
@@ -391,10 +392,11 @@ class SupplierManagementTest extends SecurityTestCase
         $this->actingAs($this->admin)->post(route('supplier.payment.void', $later->id), ['void_reason' => 'wrong invoice']);
         $this->actingAs($this->admin)->delete(route('purchase.delete', $purchase->id))->assertSessionMissing('error');
 
-        $this->assertNull($purchase->fresh());
+        $this->assertSame('cancelled', $purchase->fresh()->status);
         $this->assertSame(0.0, $this->balance($supplier));
-        $this->assertSame(0, SupplierPayment::where('source', 'purchase')->count());
-        $this->assertSame(0, SupplierLedger::where('supplier_id', $supplier->id)->whereIn('transaction_type', ['Purchase'])->count());
+        $this->assertNotNull(SupplierPayment::where('source', 'purchase')->sole()->voided_at);
+        $this->assertSame(1, SupplierLedger::where('supplier_id', $supplier->id)->where('transaction_type', 'Purchase Cancelled')->where('debit', 1000)->count());
+        $this->assertSame([], app(\App\Services\SupplierReconciliationService::class)->check($supplier)['issues']);
     }
 
     // ---- ledger / statement ---------------------------------------------------

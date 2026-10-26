@@ -85,8 +85,8 @@ class SupplierController extends Controller
         $title = $supplier->name;
         $summary = $this->accounts->summary($supplier);
 
-        $openInvoices = Purchase::where('supplier_id', $id)->where('due_amount', '>', 0)->orderBy('purchase_date')->orderBy('id')->get();
-        $purchases = Purchase::where('supplier_id', $id)->orderByDesc('purchase_date')->orderByDesc('id')->limit(10)->get();
+        $openInvoices = Purchase::approved()->where('supplier_id', $id)->where('due_amount', '>', 0)->orderBy('purchase_date')->orderBy('id')->get();
+        $purchases = Purchase::approved()->where('supplier_id', $id)->orderByDesc('purchase_date')->orderByDesc('id')->limit(10)->get();
         $payments = SupplierPayment::with('purchase:id,invoice_no')->where('supplier_id', $id)->orderByDesc('payment_date')->orderByDesc('id')->limit(10)->get();
         $returns = PurchaseReturn::where('supplier_id', $id)->orderByDesc('return_date')->orderByDesc('id')->limit(10)->get();
 
@@ -214,7 +214,7 @@ class SupplierController extends Controller
         $supplier = Supplier::findOrFail($id);
         $title = "Purchase History - " . $supplier->name;
 
-        $purchases = Purchase::where('supplier_id', $id)->orderByDesc('purchase_date')->orderByDesc('id')->get();
+        $purchases = Purchase::approved()->where('supplier_id', $id)->orderByDesc('purchase_date')->orderByDesc('id')->get();
         $returns = PurchaseReturn::where('supplier_id', $id)->orderByDesc('return_date')->orderByDesc('id')->get();
 
         return view('back-end.supplier.purchase_history', compact('name', 'title', 'supplier', 'purchases', 'returns'));
@@ -238,10 +238,10 @@ class SupplierController extends Controller
         $totals = SupplierLedger::whereIn('supplier_id', $suppliers->pluck('id'))
             ->groupBy('supplier_id')
             ->selectRaw('supplier_id,
-                SUM(CASE WHEN transaction_type = ? THEN credit ELSE 0 END) as purchase,
+                SUM(CASE WHEN transaction_type = ? THEN credit WHEN transaction_type = ? THEN -debit ELSE 0 END) as purchase,
                 SUM(CASE WHEN transaction_type = ? THEN debit WHEN transaction_type = ? THEN -credit ELSE 0 END) as paid,
                 SUM(CASE WHEN transaction_type = ? THEN debit ELSE 0 END) as returned',
-                [SupplierLedger::PURCHASE, SupplierLedger::PAYMENT, SupplierLedger::PAYMENT_VOID, SupplierLedger::PURCHASE_RETURN])
+                [SupplierLedger::PURCHASE, SupplierLedger::PURCHASE_CANCEL, SupplierLedger::PAYMENT, SupplierLedger::PAYMENT_VOID, SupplierLedger::PURCHASE_RETURN])
             ->get()->keyBy('supplier_id');
 
         return view('back-end.supplier.due_report', compact('name', 'title', 'suppliers', 'all_suppliers', 'totals'));

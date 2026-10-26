@@ -34,14 +34,25 @@ class SupplierReconciliationService
             $issues[] = "{$opening->count()} opening balance entries (expected one).";
         }
 
-        // purchase: protita invoice er ekta bill line, grand_total er soman
+        // purchase: approved invoice er ekta bill line, grand_total er soman; draft/pending er kono line na;
+        // approve er por cancel hole bill ar "Purchase Cancelled" line mile shunno
         $bills = $ledger->where('transaction_type', SupplierLedger::PURCHASE);
+        $cancels = $ledger->where('transaction_type', SupplierLedger::PURCHASE_CANCEL);
         foreach (Purchase::where('supplier_id', $supplier->id)->get() as $purchase) {
             $lines = $bills->where('purchase_id', $purchase->id);
-            if ($lines->isEmpty()) {
-                $issues[] = "Invoice {$purchase->invoice_no} ({$money($purchase->grand_total)}) has no ledger entry.";
-            } elseif ($lines->count() > 1 || round((float) $lines->sum('credit'), 2) !== round((float) $purchase->grand_total, 2)) {
-                $issues[] = "Invoice {$purchase->invoice_no}: grand total {$money($purchase->grand_total)}, ledger {$money($lines->sum('credit'))} in {$lines->count()} line(s).";
+            if ($purchase->isApproved()) {
+                if ($lines->isEmpty()) {
+                    $issues[] = "Invoice {$purchase->invoice_no} ({$money($purchase->grand_total)}) has no ledger entry.";
+                } elseif ($lines->count() > 1 || round((float) $lines->sum('credit'), 2) !== round((float) $purchase->grand_total, 2)) {
+                    $issues[] = "Invoice {$purchase->invoice_no}: grand total {$money($purchase->grand_total)}, ledger {$money($lines->sum('credit'))} in {$lines->count()} line(s).";
+                }
+            } elseif ($purchase->isCancelled()) {
+                $net = round((float) $lines->sum('credit') - (float) $cancels->where('purchase_id', $purchase->id)->sum('debit'), 2);
+                if ($net != 0) {
+                    $issues[] = "Cancelled invoice {$purchase->invoice_no} still adds {$money($net)} to the ledger.";
+                }
+            } elseif ($lines->isNotEmpty()) {
+                $issues[] = "Invoice {$purchase->invoice_no} is {$purchase->statusLabel()} but already in the ledger.";
             }
         }
         $known = Purchase::where('supplier_id', $supplier->id)->pluck('id')->flip();

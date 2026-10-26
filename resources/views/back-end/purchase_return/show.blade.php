@@ -28,6 +28,8 @@
                     <h4 class="text-danger">#{{ $return->return_no }}</h4>
                     <div>Date: {{ date('d-M-Y', strtotime($return->return_date)) }}</div>
                     <div>Status: <span class="badge badge-success">Returned</span></div>
+                    @if($return->purchase)<div>Against Invoice: <a href="{{ route('purchase.show', $return->purchase_id) }}">{{ $return->purchase->invoice_no }}</a></div>@endif
+                    @if($return->creator)<div>By: {{ $return->creator->name }}</div>@endif
                 </div>
             </div>
 
@@ -76,6 +78,12 @@
                                     {{ number_format($return->total_amount, 2) }} BDT
                                 </td>
                             </tr>
+                            @foreach($return->refunds->whereNull('voided_at') as $refund)
+                            <tr>
+                                <td class="left">Refund received ({{ $refund->payment_no }}, {{ $refund->payment_method }})</td>
+                                <td class="right">{{ number_format($refund->amount, 2) }} BDT</td>
+                            </tr>
+                            @endforeach
                         </tbody>
                     </table>
                 </div>

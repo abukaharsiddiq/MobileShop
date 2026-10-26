@@ -13,36 +13,62 @@
                 <div class="row">
                     <div class="col-md-3">
                         <div class="form-group">
-                            <label>Return No <span class="text-danger">*</span></label>
-                            {{-- অটো জেনারেটেড রিটার্ন নম্বর --}}
-                            <input type="text" name="return_no" class="form-control" value="PRN-{{ strtoupper(uniqid()) }}" readonly required>
+                            <label>Return No</label>
+                            {{-- khali rakhle save er somoy PRN-000001 er moto number --}}
+                            <input type="text" name="return_no" class="form-control" value="{{ old('return_no') }}" maxlength="50" placeholder="Auto">
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="form-group">
                             <label>Supplier <span class="text-danger">*</span></label>
-                            <select name="supplier_id" class="form-control select2" required>
+                            <select name="supplier_id" id="supplier_id" class="form-control select2" required>
                                 <option value="">Select Supplier</option>
                                 @foreach($suppliers as $supplier)
-                                    <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
+                                    <option value="{{ $supplier->id }}" @selected(old('supplier_id') == $supplier->id)>{{ $supplier->name }}</option>
                                 @endforeach
                             </select>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="form-group">
-                            <label>Return Date <span class="text-danger">*</span></label>
-                            <input type="date" name="return_date" class="form-control" value="{{ date('Y-m-d') }}" required>
+                            <label>Against Invoice</label>
+                            {{-- dile oi invoice er baki qty porjonto, kena dam (landed cost) e --}}
+                            <select name="purchase_id" id="purchase_id" class="form-control">
+                                <option value="">Any purchase from this supplier</option>
+                            </select>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="form-group">
+                            <label>Return Date <span class="text-danger">*</span></label>
+                            <input type="date" name="return_date" class="form-control" value="{{ old('return_date', date('Y-m-d')) }}" max="{{ date('Y-m-d') }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
                             <label>Note</label>
-                            <input type="text" name="note" class="form-control" placeholder="Reason for return">
+                            <input type="text" name="note" class="form-control" value="{{ old('note') }}" placeholder="Reason for return">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Refund Received Now</label>
+                            <input type="number" step="0.01" min="0" name="refund_amount" class="form-control" value="{{ old('refund_amount', 0) }}">
+                            <small class="text-muted">Only from the supplier's advance; otherwise the return reduces the due.</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Refund Method</label>
+                            <select name="refund_method" class="form-control">
+                                @foreach($methods as $method)
+                                    <option value="{{ $method }}">{{ $method === 'Bank' ? 'Bank Transfer' : $method }}</option>
+                                @endforeach
+                            </select>
                         </div>
                     </div>
                 </div>
-
+                <div id="invoice_lines" class="small text-muted mb-2"></div>
                 <hr>
                 <div class="table-responsive">
                     <table class="table table-bordered" id="returnTable">
@@ -85,6 +111,35 @@
 <script>
     // protiti row er nijer index, jate IMEI thik row er sathe jay (imeis[index][])
     let returnRowIndex = 0;
+
+    // supplier er approved invoice (baki ferot jogyo line shoho)
+    let invoices = [];
+    function invoiceLine(stockId) {
+        let invoice = invoices.find(i => i.id == $('#purchase_id').val());
+        return invoice ? invoice.lines.find(l => l.main_stock_id == stockId) : null;
+    }
+
+    $(function () {
+        $('#supplier_id').on('change', function () {
+            let select = $('#purchase_id').empty().append(new Option('Any purchase from this supplier', ''));
+            invoices = [];
+            $('#invoice_lines').empty();
+            if (!$(this).val()) return;
+            $.get("{{ url('purchase-return/supplier-invoices') }}/" + $(this).val(), function (data) {
+                invoices = data;
+                data.forEach(i => select.append(new Option(i.label, i.id)));
+            });
+        });
+
+        $('#purchase_id').on('change', function () {
+            let box = $('#invoice_lines').empty();
+            let invoice = invoices.find(i => i.id == $(this).val());
+            if (invoice) {
+                box.text('Returnable on ' + invoice.invoice_no + ': ' + invoice.lines.map(l => `${l.label} - ${l.remaining} left at ${l.landed_cost}`).join('; '));
+            }
+            $('.product-select').each(function () { if ($(this).val()) updateRowData(this); });
+        });
+    });
 
     function addRow() {
         let i = returnRowIndex++;
@@ -133,7 +188,14 @@
         
         let stock = option.data('stock');
         let price = option.data('price');
-        
+
+        // invoice bachai thakle oi line er kena dam ar baki qty
+        let line = invoiceLine($(select).val());
+        if (line) {
+            price = line.landed_cost;
+            stock = Math.min(stock, line.remaining);
+        }
+
         tr.find('.stock-display').val(stock);
         tr.find('.price').val(price);
         tr.find('.qty').attr('max', stock); // HTML5 validation
@@ -219,7 +281,10 @@
         if (!isValid) {
             e.preventDefault();
             alert('Please fix the quantity errors before submitting.');
+            return;
         }
+        // duibar click e duita return na
+        $('#submitBtn').prop('disabled', true);
     });
 </script>
 @endsection
