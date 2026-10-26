@@ -72,6 +72,9 @@ class SalePaymentService
             throw new \Exception("Invoice {$sale->invoice_no} has only " . number_format($due, 2) . ' due. You cannot take ' . number_format($amount, 2) . '.');
         }
         $channel = self::assertMethod($method, $reference);
+        if ($channel === 'credit') {
+            throw new \Exception('Store credit can be used at the POS on a new sale, not for an old due.');
+        }
 
         $sale->paid_amount = round($sale->paid_amount + $amount, 2);
         $sale->due_amount = round($due - $amount, 2);
@@ -107,6 +110,19 @@ class SalePaymentService
         ]);
 
         return $sale;
+    }
+
+    /**
+     * Customer er store credit: return e deya (completed) - cancel na howa sale e "Store Credit" e khoroch.
+     * (Ledger e eta customer er agrim; onno invoice er due alada thake.)
+     */
+    public static function availableCredit(int $customerId): float
+    {
+        $issued = (float) \App\Models\SaleReturn::completed()->where('customer_id', $customerId)->sum('store_credit');
+        $used = (float) SalePayment::where('customer_id', $customerId)->where('type', SalePayment::TYPE_SALE)->where('channel', 'credit')
+            ->whereHas('sale', fn ($q) => $q->completed())->sum('amount');
+
+        return round(max(0, $issued - $used), 2);
     }
 
     /**

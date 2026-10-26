@@ -4,315 +4,228 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Sale;
-use App\Models\SaleDetail;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
+use App\Models\SalePayment;
 use App\Models\ProductImei;
 use App\Models\MainStock;
-use App\Models\CustomerLedger;
-use App\Services\ImeiService;
-use App\Services\LedgerService;
 use App\Services\SalePaymentService;
-use App\Services\StockService;
+use App\Services\SaleReturnService;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use DB;
-use Auth;
 
 class SaleReturnController extends Controller
 {
 
     private $heading;
-    public function __construct(
-        private ImeiService $imeiService,
-        private StockService $stockService,
-        private LedgerService $ledger,
-        private SalePaymentService $payments,
-    )
+    public function __construct(private SaleReturnService $returns)
     {
         $this->heading = 'Sale Return';
     }
 
-    public function index()
+    // Return history: return no / invoice / customer / IMEI, status, type, tarikh
+    public function index(Request $request)
 {
-    $returns = SaleReturn::with(['customer', 'sale'])
-                ->orderBy('id', 'desc')
-                ->get();
-                
-    return view('back-end.sale-return.index', compact('returns'));
+    $request->validate([
+        'status'    => ['nullable', Rule::in([SaleReturn::STATUS_PENDING, SaleReturn::STATUS_COMPLETED, SaleReturn::STATUS_REJECTED])],
+        'type'      => 'nullable|in:return,exchange',
+        'from_date' => 'nullable|date',
+        'to_date'   => 'nullable|date',
+    ]);
+
+    $returns = SaleReturn::with(['customer', 'sale:id,invoice_no', 'exchangeSale:id,invoice_no', 'returnItems', 'creator:id,name'])
+        ->when($request->user()->allowedBranchIds(), fn ($q, $ids) => $q->where(fn ($w) => $w->whereIn('branch_id', $ids)->orWhereNull('branch_id')))
+        ->when($request->q, function ($q, $term) {
+            $q->where(fn ($w) => $w->where('return_no', 'like', "%{$term}%")
+                ->orWhereHas('sale', fn ($s) => $s->where('invoice_no', 'like', "%{$term}%"))
+                ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$term}%")->orWhere('phone', 'like', "%{$term}%"))
+                ->orWhereHas('returnItems', fn ($i) => $i->where('imei_no', $term)));
+        })
+        ->when($request->status, fn ($q, $s) => $q->where('status', $s))
+        ->when($request->type, fn ($q, $t) => $q->where('type', $t))
+        ->when($request->from_date, fn ($q, $d) => $q->whereDate('return_date', '>=', $d))
+        ->when($request->to_date, fn ($q, $d) => $q->whereDate('return_date', '<=', $d))
+        ->orderByRaw("status = 'pending' DESC")->orderByDesc('id')
+        ->paginate(25)->withQueryString();
+    $pendingCount = SaleReturn::where('status', SaleReturn::STATUS_PENDING)->count();
+
+    return view('back-end.sale-return.index', compact('returns', 'pendingCount'));
 }
 
-public function show($id)
+    public function history(Request $request)
+    {
+        return $this->index($request);
+    }
+
+public function show(Request $request, $id)
 {
-    $return = SaleReturn::with(['customer', 'sale', 'returnItems.product'])->findOrFail($id);
-    return view('back-end.sale-return.details_modal', compact('return'));
+    $return = SaleReturn::with(['customer', 'sale', 'exchangeSale.items.product', 'returnItems.product', 'returnItems.saleDetail.ram',
+        'returnItems.saleDetail.rom', 'returnItems.saleDetail.color', 'creator:id,name', 'approver:id,name', 'rejecter:id,name', 'branch:id,name'])
+        ->findOrFail($id);
+    abort_unless($request->user()->canAccessBranch($return->branch_id), 403);
+    $refunds = SalePayment::where('type', SalePayment::TYPE_REFUND)->where('note', 'Return ' . $return->return_no)->get();
+
+    // purono list er modal
+    if ($request->ajax()) {
+        return view('back-end.sale-return.details_modal', compact('return'));
+    }
+
+    return view('back-end.sale-return.show', compact('return', 'refunds'));
+}
+
+public function showByRef($ref_no)
+{
+    $return = SaleReturn::where('return_no', $ref_no)
+        ->orWhere('id', preg_match('/^RET-(\d+)$/', $ref_no, $m) ? (int) $m[1] : 0)
+        ->firstOrFail();
+
+    return redirect()->route('sale-return.show', $return->id);
 }
 
    public function create() {
         $name = $this->heading;
         $title = $this->heading;
-        return view('back-end.sale-return.create', compact('name', 'title'));
+        $methods = collect(SalePayment::methods())->reject(fn ($c) => $c === 'credit')->keys();
+        $reasons = SaleReturn::REASONS;
+        $conditions = SaleReturnItem::CONDITIONS;
+        $canApprove = SaleReturnService::canApprove(request()->user());
+        // exchange e notun jinish
+        $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])->where('quantity', '>', 0)->active()->get();
+        $token = (string) Str::uuid();
+        return view('back-end.sale-return.create', compact('name', 'title', 'methods', 'reasons', 'conditions', 'canApprove', 'stocks', 'token'));
     }
 
+// Invoice khuje: protita line e baki qty, ekhono bikri IMEI, ferot er dam (discount/tax shoho)
 public function findInvoiceForReturn(Request $request)
 {
     $sale = Sale::with(['customer', 'items.product', 'items.ram', 'items.rom', 'items.color'])
         ->where('invoice_no', $request->invoice_no)
         ->first();
 
-    if ($sale) {
-        $factor = $this->invoiceDiscountFactor($sale, $sale->items);
+    if (!$sale) {
+        return response()->json(['status' => 'error', 'message' => 'Invoice not found']);
+    }
+    if ($sale->isCancelled()) {
+        return response()->json(['status' => 'error', 'message' => "Invoice {$sale->invoice_no} is cancelled."]);
+    }
+    abort_unless($request->user()->canAccessBranch($sale->branch_id), 403);
 
-        foreach ($sale->items as $item) {
-            // ei line e bikri howa (ekhono ferot na) IMEI
-            $item->imeis123 = ProductImei::where('sale_detail_id', $item->id)
-                ->where('sale_id', $sale->id)
-                ->where('status', ProductImei::STATUS_SOLD)
-                ->get(['id', 'imei_no', 'imei_no_2']);
+    $lineTotal = (float) $sale->items->sum('unit_total');
+    $factor = $lineTotal > 0 ? max(0, ((float) $sale->grand_total - (float) $sale->additional_charge) / $lineTotal) : 1;
+    $pendingDevices = SaleReturnItem::whereNotNull('product_imei_id')
+        ->whereHas('saleReturn', fn ($q) => $q->where('status', SaleReturn::STATUS_PENDING))->pluck('product_imei_id')->all();
 
-            $item->imei_tracked = $item->imeis123->isNotEmpty() || $item->product->requiresImei();
-            // ekta unit ferot dile koto taka ferot (item discount ar invoice discount er bhag bad diye)
-            $item->refund_unit_price = $item->quantity > 0 ? round($item->unit_total / $item->quantity * $factor, 2) : 0;
-        }
+    foreach ($sale->items as $item) {
+        // ei line e bikri howa (ekhono ferot na, pending return e na) IMEI
+        $item->imeis123 = ProductImei::where('sale_detail_id', $item->id)
+            ->where('sale_id', $sale->id)
+            ->where('status', ProductImei::STATUS_SOLD)
+            ->whereNotIn('id', $pendingDevices)
+            ->get(['id', 'imei_no', 'imei_no_2']);
 
-        return response()->json(['status' => 'success', 'sale' => $sale]);
+        $item->imei_tracked = $item->imeis123->isNotEmpty() || $item->product->requiresImei()
+            || ProductImei::where('sale_detail_id', $item->id)->exists();
+        $item->pending_qty = (int) SaleReturnItem::where('sale_detail_id', $item->id)
+            ->whereHas('saleReturn', fn ($q) => $q->where('status', SaleReturn::STATUS_PENDING))->sum('quantity');
+        // ekta unit ferot dile koto taka ferot (item discount ar invoice discount er bhag bad diye)
+        $item->refund_unit_price = $item->quantity > 0 ? round($item->unit_total / $item->quantity * $factor, 2) : 0;
     }
 
-    return response()->json(['status' => 'error', 'message' => 'Invoice not found']);
+    return response()->json(['status' => 'success', 'sale' => $sale, 'store_credit' => SalePaymentService::availableCredit($sale->customer_id)]);
 }
-
 
 public function store(Request $request)
 {
     $request->validate([
-        'sale_id'       => 'required|exists:sales,id',
-        'imei_nos'      => 'nullable|array',
-        'items'         => 'nullable|array',      // [sale_detail_id => qty] IMEI chara item (accessory)
-        'items.*'       => 'nullable|integer|min:0',
+        'sale_id'          => 'required|exists:sales,id',
+        'imei_nos'         => 'nullable|array',
+        'items'            => 'nullable|array',      // [sale_detail_id => qty] IMEI chara item (accessory)
+        'items.*'          => 'nullable|integer|min:0',
         'imei_condition'   => 'nullable|array',
-        'imei_condition.*' => 'in:available,damaged',
-        'refund_method' => 'nullable|string|max:50',
-        'note'          => 'nullable|string',
+        'imei_condition.*' => 'in:available,good,damaged,needs_repair',
+        'item_condition'   => 'nullable|array',
+        'item_condition.*' => 'in:good,damaged,needs_repair',
+        'inspection_note'  => 'nullable|array',
+        'inspection_note.*'=> 'nullable|string|max:255',
+        'reason'           => ['nullable', Rule::in(array_keys(SaleReturn::REASONS))],
+        'settlement'       => 'nullable|in:refund,store_credit',
+        'refund_method'    => 'nullable|string|max:50',
+        'refund_reference' => 'nullable|string|max:100',
+        'request_token'    => 'nullable|string|max:64',
+        'note'             => 'nullable|string|max:2000',
+        'exchange'                     => 'nullable|array',
+        'exchange.stock_ids'           => 'nullable|array',
+        'exchange.stock_ids.*'         => 'required|exists:main_stocks,id',
+        'exchange.qtys.*'              => 'nullable|integer|min:1',
+        'exchange.sale_prices.*'       => 'nullable|numeric|min:0',
+        'exchange.item_discounts.*'    => 'nullable|numeric|min:0',
+        'exchange.imeis'               => 'nullable|array',
+        'exchange.payments'            => 'nullable|array|max:10',
+        'exchange.payments.*.method'   => 'nullable|string|max:30',
+        'exchange.payments.*.amount'   => 'nullable|numeric|min:0',
+        'exchange.payments.*.reference'=> 'nullable|string|max:100',
     ]);
 
     DB::beginTransaction();
     try {
-        $sale = Sale::lockForUpdate()->findOrFail($request->sale_id);
-        if ($sale->isCancelled()) {
-            throw new \Exception("Invoice {$sale->invoice_no} is cancelled; nothing can be returned.");
-        }
-        $details = SaleDetail::with('product')->where('sale_id', $sale->id)->lockForUpdate()->get()->keyBy('id');
-        $factor = $this->invoiceDiscountFactor($sale, $details);
-        $lineSum = round((float) $details->sum('unit_total'), 2);
-
-        // ১. kon line theke koyta ferot
-        $lines = []; // detail_id => ['qty' => k, 'imeis' => [...]]
-
-        $seenDevices = [];
-        $conditions = []; // device id => available | damaged
-        foreach (array_unique((array) $request->imei_nos) as $imei_no) {
-            // shudhu ei invoice e bikri howa IMEI ferot neya jabe (IMEI 1 ba IMEI 2)
-            $imei = ProductImei::whereNumber((string) $imei_no)
-                ->where('sale_id', $sale->id)
-                ->where('status', ProductImei::STATUS_SOLD)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$imei || !$details->has($imei->sale_detail_id)) {
-                throw new \Exception("IMEI {$imei_no} was not sold in invoice {$sale->invoice_no}.");
-            }
-            // ekoi phone er IMEI 1 ar IMEI 2 duitai dile ekbar-i ferot
-            if (isset($seenDevices[$imei->id])) {
-                continue;
-            }
-            $seenDevices[$imei->id] = true;
-
-            // ferot asha phone thik ache (available) na nosto (damaged - abar bikri hobe na)
-            $conditions[$imei->id] = ($request->imei_condition[$imei_no] ?? $request->imei_condition[$imei->imei_no] ?? 'available') === 'damaged'
-                ? ProductImei::STATUS_DAMAGED : ProductImei::STATUS_AVAILABLE;
-
-            $lines[$imei->sale_detail_id]['imeis'][] = $imei;
-            $lines[$imei->sale_detail_id]['qty'] = ($lines[$imei->sale_detail_id]['qty'] ?? 0) + 1;
-        }
-
-        foreach ((array) $request->items as $detailId => $qty) {
-            if ((int) $qty <= 0) {
-                continue;
-            }
-            $detail = $details->get($detailId);
-            if (!$detail) {
-                throw new \Exception("Item #{$detailId} is not part of invoice {$sale->invoice_no}.");
-            }
-            $hasImei = ProductImei::where('sale_detail_id', $detail->id)->where('status', ProductImei::STATUS_SOLD)->exists();
-            if ($hasImei || $detail->product->requiresImei()) {
-                throw new \Exception("{$detail->product->product_name}: select the IMEI of the phone being returned.");
-            }
-            $lines[$detail->id]['imeis'] = [];
-            $lines[$detail->id]['qty'] = (int) $qty;
-        }
-
-        if (!$lines) {
-            throw new \Exception('Select at least one item to return.');
-        }
-
-        // ২. রিটার্ন মাস্টার রেকর্ড (taka niche hishab hoye update hoy)
-        $saleReturn = new SaleReturn();
-        $saleReturn->sale_id = $sale->id;
-        $saleReturn->customer_id = $sale->customer_id;
-        $saleReturn->total_refund = 0;
-        $saleReturn->refund_method = $request->refund_method;
-        $saleReturn->note = $request->note;
-        $saleReturn->return_date = now();
-        $saleReturn->created_by = auth()->id();
-        $saleReturn->save();
-
-        $totalRefund = 0;
-        $subtotalReduction = 0;
-
-        // ৩. আইটেম এবং স্টক প্রসেসিং
-        foreach ($lines as $detailId => $line) {
-            $detail = $details->get($detailId);
-            $k = $line['qty'];
-
-            if ($k > $detail->quantity) {
-                throw new \Exception("{$detail->product->product_name}: only {$detail->quantity} left on this invoice to return.");
-            }
-
-            // protiti line er nijer dam (item discount shoho) ar invoice discount er bhag
-            $lineReduction = round($detail->unit_total / $detail->quantity * $k, 2);
-            $refund = round($lineReduction * $factor, 2);
-            $totalRefund += $refund;
-            $subtotalReduction += $lineReduction;
-
-            // ডিটেইল টেবিল থেকে কমানো
-            $newQty = $detail->quantity - $k;
-            $detail->item_discount = $detail->quantity > 0 ? round($detail->item_discount * $newQty / $detail->quantity, 2) : 0;
-            $detail->unit_total = $newQty > 0 ? round($detail->unit_total - $lineReduction, 2) : 0;
-            $detail->quantity = $newQty;
-            $detail->save();
-
-            // মেইন স্টক বাড়ানো (ভ্যারিয়েন্ট অনুযায়ী) + stock ledger
-            $stock = MainStock::where('product_id', $detail->product_id)
-                ->where('ram_id', $detail->ram_id)
-                ->where('rom_id', $detail->rom_id)
-                ->where('color_id', $detail->color_id)
-                ->lockForUpdate()
-                ->first();
-            if (!$stock) {
-                throw new \Exception("Stock record for {$detail->product->product_name} was not found.");
-            }
-            // je branch e bikri hoyechilo (phone er branch), IMEI chara hole user er branch; ekoi line duibar na (key)
-            $branches = collect($line['imeis'] ?? [])->pluck('branch_id')->filter()->unique();
-            $this->stockService->move($stock, $k, StockService::SALE_RETURN, $saleReturn, null,
-                $branches->count() === 1 ? (int) $branches->first() : \App\Models\Branch::currentId(),
-                "sale_return:{$saleReturn->id}:{$detail->id}");
-
-            if ($line['imeis']) {
-                $perUnit = round($refund / $k, 2);
-                foreach ($line['imeis'] as $i => $imei) {
-                    // shesh unit e rounding er baki tuku
-                    $unitRefund = $i == $k - 1 ? round($refund - $perUnit * ($k - 1), 2) : $perUnit;
-
-                    SaleReturnItem::create([
-                        'sale_return_id' => $saleReturn->id,
-                        'sale_detail_id' => $detail->id,
-                        'product_id'     => $detail->product_id,
-                        'quantity'       => 1,
-                        'imei_no'        => $imei->imei_no,
-                        'refund_price'   => $unitRefund,
-                    ]);
-
-                    // status available/damaged; ekoi IMEI onno record e dokhole thakle ferot hoy na;
-                    // purono sale er tottho imei_movements e thake
-                    $condition = $conditions[$imei->id];
-                    $this->imeiService->releaseFromSale($imei, $saleReturn, $condition, (int) $sale->customer_id,
-                        "Returned by customer from invoice {$sale->invoice_no}"
-                        . ($condition === ProductImei::STATUS_DAMAGED ? ' (faulty)' : ''));
-                }
-            } else {
-                SaleReturnItem::create([
-                    'sale_return_id' => $saleReturn->id,
-                    'sale_detail_id' => $detail->id,
-                    'product_id'     => $detail->product_id,
-                    'quantity'       => $k,
-                    'imei_no'        => null,
-                    'refund_price'   => $refund,
-                ]);
-            }
-        }
-
-        // ৪. সেলের হিসাব: refund age due theke kate, baki ta nogod ferot
-        $totalRefund = round($totalRefund, 2);
-        $dueBefore = round((float) $sale->due_amount, 2);
-        $dueAdjusted = min($totalRefund, $dueBefore);
-        $cashRefund = round($totalRefund - $dueAdjusted, 2);
-
-        // invoice discount ar tax line er anupate kome; additional charge (service) ferot hoy na
-        $share = $lineSum > 0 ? $subtotalReduction / $lineSum : 0;
-        $sale->grand_total = round($sale->grand_total - $totalRefund, 2);
-        $sale->subtotal = round($sale->subtotal - $subtotalReduction, 2);
-        $sale->tax_amount = round((float) $sale->tax_amount * (1 - $share), 2);
-        $sale->discount = max(0, round($sale->subtotal + (float) $sale->tax_amount + (float) $sale->additional_charge - $sale->grand_total, 2));
-        $sale->paid_amount = round($sale->paid_amount - $cashRefund, 2);
-        $sale->due_amount = round($dueBefore - $dueAdjusted, 2);
-        $sale->save();
-
-        $saleReturn->update([
-            'total_refund' => $totalRefund,
-            'due_adjusted' => $dueAdjusted,
-            'cash_refund'  => $cashRefund,
-        ]);
-
-        // ৫. লেজার: ferot er dam customer er pawna theke kome; nogod ferot dile seta alada entry
-        $this->ledger->customerEntry([
-            'customer_id'      => $sale->customer_id,
-            'date'             => now()->toDateString(),
-            'transaction_type' => 'Return',
-            'sale_id'          => $sale->id,
-            'reference_no'     => 'RET-' . $saleReturn->id,
-            'credit'           => $totalRefund,
-            'note'             => 'Sale Return. Total Refund: ' . number_format($totalRefund, 2),
-        ]);
-        if ($cashRefund > 0) {
-            $refundEntry = $this->ledger->customerEntry([
-                'customer_id'      => $sale->customer_id,
-                'date'             => now()->toDateString(),
-                'transaction_type' => 'Refund Paid',
-                'sale_id'          => $sale->id,
-                'reference_no'     => 'RET-' . $saleReturn->id,
-                'debit'            => $cashRefund,
-                'note'             => 'Cash refunded to customer' . ($request->refund_method ? ' (' . $request->refund_method . ')' : ''),
-            ]);
-            $refundMethod = $request->refund_method ?: 'Cash';
-            $channel = \App\Models\SalePayment::channelOf(collect(array_keys(\App\Models\SalePayment::methods()))
-                ->first(fn ($m) => strcasecmp($m, $refundMethod) === 0) ?? 'Cash') ?? 'cash';
-            \App\Models\SalePayment::create([
-                'sale_id' => $sale->id, 'customer_id' => $sale->customer_id, 'type' => \App\Models\SalePayment::TYPE_REFUND,
-                'method' => $refundMethod, 'channel' => $channel, 'amount' => $cashRefund, 'payment_date' => now()->toDateString(),
-                'received_by' => auth()->id(), 'customer_ledger_id' => $refundEntry->id, 'note' => 'Sale return RET-' . $saleReturn->id,
-            ]);
-        }
-
-        // kisti thakle bakir sathe milano
-        $this->payments->syncScheduleToDue($sale);
-
+        $return = $this->returns->create($request->all(), $request->user());
         DB::commit();
-        $message = 'Return processed and stock updated! Refund ' . number_format($totalRefund, 2)
-            . ($cashRefund > 0 ? ', give ' . number_format($cashRefund, 2) . ' back to the customer.' : ' adjusted against due.');
-        return redirect()->route('sale.index')->with('success', $message);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->with('error', errorMessage($e))->withInput();
+    }
 
+    if (!$return->wasRecentlyCreated) {
+        return redirect()->route('sale-return.show', $return->id)->with('success', "Return {$return->return_no} was already saved; nothing was added.");
+    }
+    if ($return->isPending()) {
+        return redirect()->route('sale-return.show', $return->id)->with('success', "Return {$return->return_no} saved and waiting for approval.");
+    }
+
+    $message = "Return {$return->return_no} completed. Value " . number_format($return->total_refund, 2)
+        . ($return->due_adjusted > 0 ? ', ' . number_format($return->due_adjusted, 2) . ' adjusted against due' : '')
+        . ($return->cash_refund > 0 ? ', give ' . number_format($return->cash_refund, 2) . " back ({$return->refund_method})" : '')
+        . ($return->exchangeSale ? ', exchange invoice ' . $return->exchangeSale->invoice_no : '')
+        . ($return->store_credit > 0 && !$return->exchange_sale_id ? ', ' . number_format($return->store_credit, 2) . ' kept as store credit' : '') . '.';
+
+    return redirect()->route('sale-return.show', $return->id)->with('success', $message);
+}
+
+public function approve(Request $request, $id)
+{
+    $request->validate(['note' => 'nullable|string|max:500']);
+    $return = SaleReturn::findOrFail($id);
+    abort_unless($request->user()->canAccessBranch($return->branch_id), 403);
+
+    DB::beginTransaction();
+    try {
+        $return = $this->returns->approve($return, $request->user(), $request->note);
+        DB::commit();
     } catch (\Exception $e) {
         DB::rollBack();
         return back()->with('error', errorMessage($e));
     }
+
+    return back()->with('success', "Return {$return->return_no} approved and completed.");
 }
 
-// Line er dam theke ferot: (grand_total - additional charge) / line total er jogfol -
-// invoice discount kome, tax er bhag jog hoy; additional charge (service) ferot hoy na.
-private function invoiceDiscountFactor(Sale $sale, $details)
+public function reject(Request $request, $id)
 {
-    $lineTotal = $details->sum('unit_total');
-    $goodsWithTax = (float) $sale->grand_total - (float) $sale->additional_charge;
+    $request->validate(['reason' => 'required|string|min:5|max:255']);
+    $return = SaleReturn::findOrFail($id);
+    abort_unless($request->user()->canAccessBranch($return->branch_id), 403);
 
-    return $lineTotal > 0 ? max(0, $goodsWithTax / $lineTotal) : 1;
+    DB::beginTransaction();
+    try {
+        $return = $this->returns->reject($return, $request->user(), $request->reason);
+        DB::commit();
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->with('error', errorMessage($e));
+    }
+
+    return back()->with('success', "Return {$return->return_no} rejected.");
 }
 
 }

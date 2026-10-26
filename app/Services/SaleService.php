@@ -176,8 +176,10 @@ class SaleService
             throw new \Exception('Sale price is below purchase cost. ' . implode('; ', $belowCost));
         }
 
-        $payments = $this->paymentLines($input, $grandTotal);
+        $payments = $this->paymentLines($input, $grandTotal, $customer->id);
         $paid = round(array_sum(array_column($payments, 'amount')), 2);
+        // store credit notun taka na (return e agei ledger e credit hoyeche), tai ledger e shudhu baki ta
+        $creditUsed = round(array_sum(array_column(array_filter($payments, fn ($p) => $p['channel'] === 'credit'), 'amount')), 2);
 
         $branchId = count(array_unique($branches)) === 1 ? (int) reset($branches) : Branch::currentId();
         $sale->fill([
@@ -239,8 +241,8 @@ class SaleService
             'sale_id'          => $sale->id,
             'reference_no'     => $sale->invoice_no,
             'debit'            => $grandTotal,
-            'credit'           => $paid,
-            'note'             => 'Sale Invoice: ' . $sale->invoice_no,
+            'credit'           => round($paid - $creditUsed, 2),
+            'note'             => 'Sale Invoice: ' . $sale->invoice_no . ($creditUsed > 0 ? ' (store credit ' . number_format($creditUsed, 2) . ')' : ''),
         ]);
         foreach ($payments as $payment) {
             SalePayment::create($payment + [
@@ -297,7 +299,9 @@ class SaleService
 
         Installment::where('sale_id', $sale->id)->delete();
 
-        $paid = round((float) $sale->paid_amount, 2);
+        // store credit diye deya ongsho abar credit hoye jay (sale bad, tai "used" e gona hoy na); nogod tuku ferot
+        $creditUsed = round((float) SalePayment::where('sale_id', $sale->id)->where('type', SalePayment::TYPE_SALE)->where('channel', 'credit')->sum('amount'), 2);
+        $paid = round((float) $sale->paid_amount - $creditUsed, 2);
         $this->ledger->customerEntry([
             'customer_id'      => $sale->customer_id,
             'date'             => now()->toDateString(),
@@ -305,7 +309,7 @@ class SaleService
             'sale_id'          => $sale->id,
             'reference_no'     => $sale->invoice_no,
             'credit'           => $sale->grand_total,
-            'note'             => 'Sale cancelled: ' . $reason,
+            'note'             => 'Sale cancelled: ' . $reason . ($creditUsed > 0 ? ' (store credit ' . number_format($creditUsed, 2) . ' restored)' : ''),
         ]);
         if ($paid > 0) {
             $refund = $this->ledger->customerEntry([
@@ -345,7 +349,7 @@ class SaleService
      * Payment line: payments[] (method, amount, reference, account) - ba purono form er paid_amount + payment_method.
      * Mot payable er beshi na; protita line > 0; bank/mobile e reference; ekoi reference duibar na.
      */
-    private function paymentLines(array $input, float $grandTotal): array
+    private function paymentLines(array $input, float $grandTotal, int $customerId): array
     {
         $rows = array_values(array_filter((array) ($input['payments'] ?? []), fn ($p) => is_array($p) && round((float) ($p['amount'] ?? 0), 2) != 0));
         if (!$rows && round((float) ($input['paid_amount'] ?? 0), 2) > 0) {
@@ -375,9 +379,27 @@ class SaleService
                 'account' => $row['account'] ?? null];
         }
 
+        // exchange: ferot er dam store credit hisebe, notun sale e joto lage totota
+        $apply = round((float) ($input['apply_store_credit'] ?? 0), 2);
+        if ($apply > 0) {
+            $room = round($grandTotal - array_sum(array_column($lines, 'amount')), 2);
+            if (min($apply, $room) > 0) {
+                $lines[] = ['method' => 'Store Credit', 'channel' => 'credit', 'amount' => round(min($apply, $room), 2), 'reference' => null, 'account' => null];
+            }
+        }
+
         $paid = round(array_sum(array_column($lines, 'amount')), 2);
         if ($paid > $grandTotal) {
             throw new \Exception('Paid amount (' . number_format($paid, 2) . ') cannot be more than the grand total (' . number_format($grandTotal, 2) . ').');
+        }
+
+        // store credit: customer er jotota ache tar beshi na
+        $credit = round(array_sum(array_column(array_filter($lines, fn ($l) => $l['channel'] === 'credit'), 'amount')), 2);
+        if ($credit > 0) {
+            $available = SalePaymentService::availableCredit($customerId);
+            if ($credit > $available) {
+                throw new \Exception('Store credit used (' . number_format($credit, 2) . ') is more than the customer has (' . number_format($available, 2) . ').');
+            }
         }
 
         return $lines;

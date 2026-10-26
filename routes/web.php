@@ -340,6 +340,7 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/delete/{id}', [SaleController::class, 'delete'])->name('delete')->middleware('can:cancel sale');
         Route::post('/cancel/{id}', [SaleController::class, 'cancel'])->name('cancel')->middleware('can:cancel sale');
         Route::get('/search-products', [SaleController::class, 'searchProducts'])->name('search_products')->middleware('can:create sale');
+        Route::get('/customer-credit/{id}', [SaleController::class, 'customerCredit'])->name('customer_credit')->middleware('can:create sale');
         Route::post('/change/status/{id}', [SaleController::class, 'changeStatus'])->name('status.change')->middleware('can:update sale');
 
         Route::get('/show/{id}', [SaleController::class, 'show'])->name('show')->middleware('can:read sale');
@@ -361,6 +362,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/create', [SaleReturnController::class, 'create'])->name('create')->middleware('can:create return');
         Route::post('/store', [SaleReturnController::class, 'store'])->name('store')->middleware('can:create return');
         Route::get('/show/{id}', [SaleReturnController::class, 'show'])->name('show')->middleware('can:read return');
+        Route::post('/approve/{id}', [SaleReturnController::class, 'approve'])->name('approve')->middleware('can:approve return');
+        Route::post('/reject/{id}', [SaleReturnController::class, 'reject'])->name('reject')->middleware('can:approve return');
         Route::get('/history', [SaleReturnController::class, 'history'])->name('history')->middleware('can:read return');
         Route::get('/show-by-ref/{ref_no}', [SaleReturnController::class, 'showByRef'])->name('show_by_ref')->middleware('can:read return');
     });

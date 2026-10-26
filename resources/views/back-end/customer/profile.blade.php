@@ -53,6 +53,9 @@
                         <tr><td>Returns ({{ $summary['return_count'] }})</td><td class="text-right">- {{ $money($summary['returns']) }}</td></tr>
                         <tr class="font-weight-bold"><td>Net purchase</td><td class="text-right">{{ $money($summary['net_sales']) }}</td></tr>
                         <tr><td>Total paid (after {{ $money($summary['cash_refunded']) }} cash refunded)</td><td class="text-right">{{ $money($summary['total_paid']) }}</td></tr>
+                        @if($summary['store_credit'] > 0)
+                        <tr><td>Store credit (from returns, usable at POS)</td><td class="text-right text-success">{{ $money($summary['store_credit']) }}</td></tr>
+                        @endif
                         @if($summary['opening_balance'] != 0)
                         <tr><td>Opening balance</td><td class="text-right">{{ $money(abs($summary['opening_balance'])) }} {{ $summary['opening_balance'] < 0 ? '(Advance)' : '(Due)' }}</td></tr>
                         @endif
