@@ -23,6 +23,7 @@ class ImeiService
     const PURCHASE_RETURN = 'purchase_return';
     const SALE = 'sale';
     const SALE_RETURN = 'sale_return';
+    const SALE_CANCELLED = 'sale_cancelled';
     const REGISTRATION = 'registration';
     const TRANSFER = 'transfer';
     const REPAIR_OUT = 'repair_out';

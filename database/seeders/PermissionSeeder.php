@@ -82,6 +82,7 @@ class PermissionSeeder extends Seeder
             ['create stock adjustment', 'Stock Reconciliation'],
             ['approve stock adjustment', 'Stock Reconciliation'],
             ['sell below cost', 'Sale'],
+            ['cancel sale', 'Sale'],                              // pura sale batil (stock, IMEI, ledger ulto)
             ['search imei', 'IMEI'],
             ['manage imei', 'IMEI'],      // reserve, repair, damaged
             ['access all branches', 'Branch'],

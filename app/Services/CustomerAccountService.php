@@ -122,7 +122,7 @@ class CustomerAccountService
     public function summary(Customer $customer): array
     {
         $balance = round(LedgerService::customerBalance($customer->id), 2);
-        $sales = Sale::where('customer_id', $customer->id)
+        $sales = Sale::completed()->where('customer_id', $customer->id)
             ->selectRaw('COUNT(*) as invoices, COALESCE(SUM(grand_total), 0) as net, COALESCE(SUM(paid_amount), 0) as paid,
                 COALESCE(SUM(due_amount), 0) as due, MIN(sale_date) as first_date, MAX(sale_date) as last_date')
             ->first();
@@ -198,7 +198,7 @@ class CustomerAccountService
             'debit'         => round((float) $rows->sum('debit'), 2),
             'credit'        => round((float) $rows->sum('credit'), 2),
             'opening_entry' => round($sum(['Opening Balance'], 'debit') - $sum(['Opening Balance'], 'credit'), 2),
-            'sales'         => $sum(['Sale'], 'debit'),
+            'sales'         => round($sum(['Sale'], 'debit') - $sum(['Sale Cancelled'], 'credit'), 2),
             'paid'          => $sum(['Sale', 'Received'], 'credit'),
             'returns'       => $sum(['Return'], 'credit'),
             'refunds'       => $sum(['Refund Paid'], 'debit'),
@@ -215,7 +215,7 @@ class CustomerAccountService
     public function warranties(Customer $customer)
     {
         $details = SaleDetail::with(['product:id,product_name,warranty_months', 'sale:id,invoice_no,sale_date', 'ram', 'rom', 'color'])
-            ->whereHas('sale', fn ($q) => $q->where('customer_id', $customer->id))
+            ->whereHas('sale', fn ($q) => $q->completed()->where('customer_id', $customer->id))
             ->where('quantity', '>', 0)
             ->get();
         $devices = ProductImei::whereIn('sale_detail_id', $details->pluck('id'))->where('status', ProductImei::STATUS_SOLD)

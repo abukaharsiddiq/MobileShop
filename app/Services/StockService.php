@@ -28,6 +28,7 @@ class StockService
     const PURCHASE_RETURN = 'purchase_return';
     const SALE = 'sale';
     const SALE_RETURN = 'sale_return';
+    const SALE_CANCELLED = 'sale_cancelled';
     const EXCHANGE_IN = 'exchange_in';             // sale exchange: customer er ferot phone (Sales module)
     const EXCHANGE_OUT = 'exchange_out';           // sale exchange: notun phone
     const TRANSFER_OUT = 'transfer_out';
@@ -44,6 +45,7 @@ class StockService
         self::PURCHASE_RETURN  => 'Purchase Return',
         self::SALE             => 'Sale',
         self::SALE_RETURN      => 'Sales Return',
+        self::SALE_CANCELLED   => 'Sale Cancelled',
         self::EXCHANGE_IN      => 'Exchange In',
         self::EXCHANGE_OUT     => 'Exchange Out',
         self::TRANSFER_OUT     => 'Transfer Out',

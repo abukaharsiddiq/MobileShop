@@ -38,6 +38,10 @@
             <div><span>Invoice: <strong>{{ $sale->invoice_no }}</strong></span> <span>Date: {{ date('d/m/y', strtotime($sale->sale_date)) }}</span></div>
             <div><span>Name: {{ $sale->customer->name ?? 'Walking Customer' }}</span></div>
             <div><span>Phone: {{ $sale->customer->phone ?? 'N/A' }}</span></div>
+            <div><span>Sold by: {{ $sale->salesperson->name ?? '-' }}</span> <span>{{ $sale->branch->name ?? '' }}</span></div>
+            @if($sale->isCancelled())
+            <div style="justify-content:center; font-weight:bold; font-size:16px;">*** CANCELLED ***</div>
+            @endif
         </div>
 
         <table class="item-table">
@@ -80,12 +84,32 @@
                 <span>-{{ number_format($sale->discount, 2) }}</span>
             </div>
             @endif
-            
+            @if($sale->tax_amount > 0)
+            <div class="summary-row">
+                <span>VAT ({{ (float) $sale->tax_rate }}%):</span>
+                <span>{{ number_format($sale->tax_amount, 2) }}</span>
+            </div>
+            @endif
+            @if($sale->additional_charge > 0)
+            <div class="summary-row">
+                <span>{{ $sale->additional_charge_note ?: 'Charge' }}:</span>
+                <span>{{ number_format($sale->additional_charge, 2) }}</span>
+            </div>
+            @endif
+
             <div class="summary-row grand-total">
                 <span>Grand Total:</span>
                 <span>{{ number_format($sale->grand_total, 2) }}</span>
             </div>
-            
+
+            {{-- kon method e koto (split payment) --}}
+            @foreach($sale->payments->where('type', 'sale') as $payment)
+            <div class="summary-row">
+                <span>{{ $payment->method }}{{ $payment->reference ? ' (' . $payment->reference . ')' : '' }}:</span>
+                <span>{{ number_format($payment->amount, 2) }}</span>
+            </div>
+            @endforeach
+
             <div class="summary-row">
                 <span>Paid Amount:</span>
                 <span>{{ number_format($sale->paid_amount, 2) }}</span>

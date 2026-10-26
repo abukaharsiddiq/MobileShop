@@ -19,7 +19,7 @@ class ReportController extends Controller
         $start_date = $request->start_date ?? date('Y-m-d');
         $end_date = $request->end_date ?? date('Y-m-d');
 
-        $sales = Sale::with('customer')
+        $sales = Sale::with('customer')->completed()
                     ->whereBetween('sale_date', [$start_date, $end_date])
                     ->orderBy('id', 'desc')
                     ->get();
@@ -40,6 +40,7 @@ class ReportController extends Controller
                 DB::raw('SUM(quantity) as total_qty'), 
                 DB::raw('SUM(unit_total) as total_amount'))
             ->whereHas('sale', function($q) use ($start_date, $end_date) {
+                $q->completed();
                 $q->whereBetween('sale_date', [$start_date, $end_date]);
             })
             ->groupBy('product_id', 'ram_id', 'rom_id','color_id')
@@ -58,13 +59,15 @@ class ReportController extends Controller
     $start_date = $request->start_date ?? date('Y-m-01');
     $end_date = $request->end_date ?? date('Y-m-d');
 
-    // বিক্রয় মূল্য = invoice er grand_total (item discount, invoice discount ar return bad diye)
+    // বিক্রয় মূল্য = invoice er grand_total - tax (sarkar er taka, ay na); cancel kora sale bad
     $totalSalesAmount = DB::table('sales')
+        ->where('status', 'completed')
         ->whereBetween('sale_date', [$start_date, $end_date])
-        ->sum('grand_total');
+        ->sum(DB::raw('grand_total - tax_amount'));
 
     $salesData = DB::table('sale_details')
         ->join('sales', 'sales.id', '=', 'sale_details.sale_id')
+        ->where('sales.status', 'completed')
         ->whereBetween('sales.sale_date', [$start_date, $end_date])
         ->select(
             DB::raw('SUM(sale_details.quantity * sale_details.purchase_price) as total_purchase_cost')
@@ -136,6 +139,7 @@ public function productWiseProfit(Request $request)
 
         $reports = SaleDetail::with(['product', 'sale.items', 'ram', 'rom', 'color'])
             ->whereHas('sale', function($q) use ($start_date, $end_date) {
+                $q->completed();
                 $q->whereBetween('sale_date', [$start_date, $end_date]);
             })
             ->where('quantity', '>', 0)
@@ -145,7 +149,8 @@ public function productWiseProfit(Request $request)
         // protiti line: quantity shoho, item discount ar invoice discount er bhag bad diye
         foreach ($reports as $item) {
             $lineTotal = $item->sale->items->sum('unit_total');
-            $factor = $lineTotal > 0 ? $item->sale->grand_total / $lineTotal : 1;
+            // jinish er dam (tax ar additional charge chara)
+            $factor = $lineTotal > 0 ? $item->sale->goodsTotal() / $lineTotal : 1;
 
             $item->gross_sale = $item->quantity * $item->sale_price;
             $item->net_sale = round($item->unit_total * $factor, 2);
@@ -166,7 +171,7 @@ public function invoiceWiseProfit(Request $request){
     $end_date = $request->end_date ? Carbon::parse($request->end_date)->format('Y-m-d') : date('Y-m-d');
 
     // Sale এর সাথে items লোড করে আনা হচ্ছে
-    $sales = Sale::with(['customer', 'items'])
+    $sales = Sale::with(['customer', 'items'])->completed()
         ->whereBetween('sale_date', [$start_date, $end_date])
         ->latest()
         ->get();

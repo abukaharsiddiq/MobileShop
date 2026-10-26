@@ -66,7 +66,8 @@
 
                                     // ২. এই ইনভয়েসের ডিসকাউন্ট বাদ দিয়ে মোট প্রফিট
                                     // প্রফিট = (সেল টোটাল - পারচেজ টোটাল) - ওভারঅল ডিসকাউন্ট
-                                    $netProfit = ($sale->grand_total - $totalPurchaseCost);
+                                    // tax sarkar er, ay na
+                                    $netProfit = ($sale->grand_total - $sale->tax_amount - $totalPurchaseCost);
                                     $grandTotalProfit += $netProfit;
                                 @endphp
                                 <tr>
