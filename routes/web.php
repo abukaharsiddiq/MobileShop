@@ -26,6 +26,7 @@ use App\Http\Controllers\FinancialYearController;
 use App\Http\Controllers\IncomeController;
 use App\Http\Controllers\JournalController;
 use App\Http\Controllers\PaymentVoucherController;
+use App\Http\Controllers\CashClosingController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -485,6 +486,23 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/get-customer-installments/{id}', [InstallmentCollectionController::class, 'getCustomerInstallments'])->name('customer')->middleware('can:create installment');
     });
     /* installment */
+
+    /* daily cash closing: cashier nijer session; 'read cash closing' shob; 'approve cash closing' review */
+    Route::prefix('cash-closing')->name('cash-closing.')->group(function () {
+        Route::get('/', [CashClosingController::class, 'index'])->name('index')->middleware('permission:open cash session|read cash closing');
+        Route::get('/export', [CashClosingController::class, 'export'])->name('export')->middleware('permission:open cash session|read cash closing');
+        Route::post('/open', [CashClosingController::class, 'open'])->name('open')->middleware('can:open cash session');
+        Route::get('/show/{id}', [CashClosingController::class, 'show'])->name('show')->middleware('permission:open cash session|read cash closing');
+        Route::get('/print/{id}', [CashClosingController::class, 'print'])->name('print')->middleware('permission:open cash session|read cash closing');
+        Route::post('/movement/{id}', [CashClosingController::class, 'movement'])->name('movement')->middleware('can:open cash session');
+        Route::post('/close/{id}', [CashClosingController::class, 'close'])->name('close')->middleware('can:open cash session');
+        Route::post('/approve/{id}', [CashClosingController::class, 'approve'])->name('approve')->middleware('can:approve cash closing');
+        Route::post('/recount/{id}', [CashClosingController::class, 'recount'])->name('recount')->middleware('can:approve cash closing');
+        Route::post('/reopen/{id}', [CashClosingController::class, 'reopen'])->name('reopen')->middleware('can:approve cash closing');
+        Route::post('/adjustment/{id}', [CashClosingController::class, 'requestAdjustment'])->name('adjustment.request')->middleware('permission:read cash closing|approve cash closing');
+        Route::post('/adjustment/review/{adjustmentId}', [CashClosingController::class, 'reviewAdjustment'])->name('adjustment.review')->middleware('can:approve cash closing');
+    });
+    /* daily cash closing */
 
     /* accounts & finance */
     Route::prefix('finance')->name('finance.')->group(function () {

@@ -651,6 +651,17 @@
         <!-- ======= Report  ========== -->
 
 
+       <!--  ======== Cash Closing ========= -->
+        @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['open cash session', 'read cash closing']))
+            <li class="nav-item">
+                <a href="{{ route('cash-closing.index') }}" class="nav-link {{ request()->routeIs('cash-closing.*') ? 'active' : '' }}">
+                    <img src="{{ asset('back-end/icon/Users.png') }}" class="menuImage">
+                    <p>Cash Closing</p>
+                </a>
+            </li>
+        @endif
+       <!--  ======== Cash Closing ========= -->
+
        <!--  ======== Accounts & Finance ========= -->
         @php $isAdmin = $user->role == 'admin'; @endphp
         @if($isAdmin || auth()->user()->hasAnyPermission(['read accounts', 'read finance report', 'reconcile account', 'manage accounts']))
