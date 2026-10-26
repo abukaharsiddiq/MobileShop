@@ -49,6 +49,7 @@ abstract class ProductRequest extends FormRequest
             'sale_price'          => ['required', 'numeric', 'min:0', 'max:99999999'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0', 'max:1000000'],
             'warranty_months'     => ['nullable', 'integer', 'min:0', 'max:120'],
+            'brand_warranty_months' => ['nullable', 'integer', 'min:0', 'max:120'],
             'description'         => ['nullable', 'string', 'max:2000'],
             'unit'                => ['nullable', 'string', 'max:20'],
         ];

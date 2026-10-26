@@ -102,7 +102,7 @@ class PermissionManagementTest extends SecurityTestCase
         $this->actingAs($admin)->put(route('permission.update', $system->id), ['name' => 'read sale', 'group_name' => 'Sales']);
         $this->assertSame('Sales', $system->fresh()->group_name);
 
-        $custom = Permission::create(['name' => 'read warranty', 'guard_name' => 'web', 'group_name' => 'Warranty']);
+        $custom = Permission::create(['name' => 'read gift card', 'guard_name' => 'web', 'group_name' => 'Gift Card']);
         $this->actingAs($admin)->delete(route('permission.delete', $custom->id));
         $this->assertDatabaseMissing('permissions', ['id' => $custom->id]);
     }

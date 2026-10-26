@@ -431,3 +431,32 @@ Artisan::command('finance:backfill {--apply : Write the journal entries (otherwi
         $this->warn('Nothing was written. Take a database backup, then run again with --apply, then php artisan finance:audit.');
     }
 })->purpose('Post existing sales, purchases, payments, returns and expenses to the journal once (dry-run by default)');
+
+// Upgrade er por ekbar: purono (completed) sale er warranty record (sale er tarikh theke, ferot bad diye).
+// Default dry-run; --apply dile likhe. Bar bar chalaleo duibar hoy na.
+Artisan::command('warranty:backfill {--apply : Write the warranty records (otherwise dry-run)}', function (App\Services\WarrantyService $warranties) {
+    $apply = (bool) $this->option('apply');
+    $sales = App\Models\Sale::where('status', 'completed')->orderBy('id')->get();
+
+    Illuminate\Support\Facades\DB::beginTransaction();
+    $created = 0;
+    foreach ($sales as $sale) {
+        $created += $warranties->issueForSale($sale);
+    }
+    $apply ? Illuminate\Support\Facades\DB::commit() : Illuminate\Support\Facades\DB::rollBack();
+
+    $this->info(($apply ? 'Created' : 'Dry-run: would create') . " {$created} warranty record(s) for {$sales->count()} completed sale(s).");
+    if (!$apply && $created) {
+        $this->warn('Nothing was written. Take a database backup, then run again with --apply.');
+    }
+})->purpose('Create warranty records for existing completed sales (dry-run by default)');
+
+// Meyad shesh hote cholche emon warranty (reminder er list; kichu pathay na)
+Artisan::command('warranty:expiring {--days= : Days ahead (default config warranty.expiring_soon_days)}', function (App\Services\WarrantyService $warranties) {
+    $rows = $warranties->expiring($this->option('days') ? (int) $this->option('days') : null);
+    foreach ($rows as $w) {
+        $this->line(sprintf('%s  %s  %-25s %-20s %s  ends %s', $w->warranty_no, str_pad($w->type, 5), $w->customer->name ?? '-',
+            $w->customer->phone ?? '-', $w->product->product_name ?? '-', $w->end_date->format('d-m-Y')));
+    }
+    $this->info($rows->count() . ' warranty(ies) expiring soon.');
+})->purpose('List warranties that expire soon (for reminders)');

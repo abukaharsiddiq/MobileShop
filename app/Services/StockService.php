@@ -39,6 +39,8 @@ class StockService
     const DAMAGED = 'damaged';
     const LOST = 'lost';
     const STOCK_COUNT = 'stock_count';
+    const WARRANTY_IN = 'warranty_in';             // warranty replacement: customer er nosto device dokane (damaged)
+    const WARRANTY_OUT = 'warranty_out';           // warranty replacement: notun unit customer ke
 
     const LABELS = [
         self::OPENING          => 'Opening Stock',
@@ -56,6 +58,8 @@ class StockService
         self::DAMAGED          => 'Damaged',
         self::LOST             => 'Lost',
         self::STOCK_COUNT      => 'Stock Count',
+        self::WARRANTY_IN      => 'Warranty Return (faulty)',
+        self::WARRANTY_OUT     => 'Warranty Replacement',
     ];
 
     public function move(MainStock $stock, int $quantity, string $type, ?Model $reference = null, ?string $note = null,

@@ -34,6 +34,7 @@ class SaleService
         private LedgerService $ledger,
         private SalePaymentService $payments,
         private FinancePostingService $finance,
+        private WarrantyService $warranties,
     ) {}
 
     public function checkout(array $input, User $user): Sale
@@ -265,6 +266,9 @@ class SaleService
             ]));
         }
 
+        // protiti device/line er shop ar brand warranty (sale er tarikh theke)
+        $this->warranties->issueForSale($sale);
+
         if ($belowCost) {
             AuditLogger::log('sale.below_cost', $sale, null, ['lines' => $belowCost]);
         }
@@ -339,6 +343,7 @@ class SaleService
         }
         // sale er journal ulta (ajker tarikhe): revenue, tax, COGS sob ferot
         $this->finance->cancelSale($sale, $reason);
+        $this->warranties->voidForSale($sale, 'Sale cancelled: ' . $reason);
 
         $sale->update([
             'status'                  => Sale::STATUS_CANCELLED,

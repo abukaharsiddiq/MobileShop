@@ -99,6 +99,9 @@ class PermissionSeeder extends Seeder
             ['open cash session', 'Cash Closing'],    // nijer drawer: open, cash in/out, gona/close
             ['read cash closing', 'Cash Closing'],    // shob cashier er session (nijer branch) + adjustment chaoa
             ['approve cash closing', 'Cash Closing'], // approve, recount, reopen, adjustment approve
+            ['read warranty', 'Warranty'],            // lookup, list, report, expiry reminder
+            ['create warranty claim', 'Warranty'],    // customer er device claim e jama, ferot deya
+            ['manage warranty claim', 'Warranty'],    // inspection, repair/brand, resolve (replacement shoho)
         ]);
     }
 }

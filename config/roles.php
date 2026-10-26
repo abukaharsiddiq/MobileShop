@@ -42,6 +42,7 @@ return [
             'search imei', 'manage imei', 'sell below cost', 'cancel sale',
             'read accounts', 'create income', 'read finance report',
             'open cash session', 'read cash closing', 'approve cash closing',
+            'read warranty', 'create warranty claim', 'manage warranty claim',
         ],
     ],
 
@@ -56,6 +57,7 @@ return [
             'create installment', 'read installment',
             'search imei',
             'open cash session',
+            'read warranty', 'create warranty claim',
         ],
     ],
 
@@ -72,6 +74,7 @@ return [
             'read accounts', 'manage accounts', 'create income', 'create transfer', 'create journal',
             'reverse transaction', 'reconcile account', 'read finance report',
             'open cash session', 'read cash closing', 'approve cash closing',
+            'read warranty',
         ],
     ],
 
@@ -82,6 +85,7 @@ return [
             'read product', 'read customer',
             'read stock report', 'search imei', 'manage imei',   // repair e pathano/ferot
             'read stock adjustment', 'create stock adjustment',
+            'read warranty', 'create warranty claim', 'manage warranty claim',
         ],
     ],
 

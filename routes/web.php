@@ -27,6 +27,7 @@ use App\Http\Controllers\IncomeController;
 use App\Http\Controllers\JournalController;
 use App\Http\Controllers\PaymentVoucherController;
 use App\Http\Controllers\CashClosingController;
+use App\Http\Controllers\WarrantyController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -486,6 +487,24 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/get-customer-installments/{id}', [InstallmentCollectionController::class, 'getCustomerInstallments'])->name('customer')->middleware('can:create installment');
     });
     /* installment */
+
+    /* warranty: lookup/list/report (read), claim jama (create), inspection/repair/ferot (manage) */
+    Route::prefix('warranty')->name('warranty.')->group(function () {
+        Route::get('/', [WarrantyController::class, 'index'])->name('index')->middleware('can:read warranty');
+        Route::get('/show/{id}', [WarrantyController::class, 'show'])->name('show')->middleware('can:read warranty');
+        Route::get('/expiring', [WarrantyController::class, 'expiring'])->name('expiring')->middleware('can:read warranty');
+        Route::post('/reminded/{id}', [WarrantyController::class, 'reminded'])->name('reminded')->middleware('can:read warranty');
+        Route::get('/report', [WarrantyController::class, 'report'])->name('report')->middleware('can:read warranty');
+        Route::get('/export', [WarrantyController::class, 'export'])->name('export')->middleware('can:read warranty');
+        Route::get('/claims', [WarrantyController::class, 'claims'])->name('claims')->middleware('can:read warranty');
+        Route::post('/claim/{id}', [WarrantyController::class, 'storeClaim'])->name('claims.store')->middleware('can:create warranty claim');
+        Route::get('/claims/show/{id}', [WarrantyController::class, 'showClaim'])->name('claims.show')->middleware('can:read warranty');
+        Route::post('/claims/inspect/{id}', [WarrantyController::class, 'inspect'])->name('claims.inspect')->middleware('can:manage warranty claim');
+        Route::post('/claims/move/{id}', [WarrantyController::class, 'move'])->name('claims.move')->middleware('can:manage warranty claim');
+        Route::post('/claims/resolve/{id}', [WarrantyController::class, 'resolve'])->name('claims.resolve')->middleware('can:manage warranty claim');
+        Route::post('/claims/deliver/{id}', [WarrantyController::class, 'deliver'])->name('claims.deliver')->middleware('permission:manage warranty claim|create warranty claim');
+    });
+    /* warranty */
 
     /* daily cash closing: cashier nijer session; 'read cash closing' shob; 'approve cash closing' review */
     Route::prefix('cash-closing')->name('cash-closing.')->group(function () {

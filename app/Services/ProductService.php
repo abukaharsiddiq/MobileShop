@@ -18,7 +18,7 @@ class ProductService
 
     public const MASTER_FIELDS = [
         'type', 'dual_sim', 'product_name', 'model_number', 'category_id', 'brand_id', 'ram_id', 'rom_id', 'color_id',
-        'purchase_price', 'sale_price', 'low_stock_threshold', 'warranty_months', 'description', 'unit',
+        'purchase_price', 'sale_price', 'low_stock_threshold', 'warranty_months', 'brand_warranty_months', 'description', 'unit',
     ];
 
     public function create(array $data): Product
