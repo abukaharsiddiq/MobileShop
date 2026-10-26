@@ -294,7 +294,7 @@ class PosSaleTest extends SecurityTestCase
 
         $this->actingAs($this->admin)->get(route('sale.print', $sale->id))->assertOk()->assertSee('BANK-55')->assertSee('VAT (5%)')->assertSee($seller->name);
         $this->actingAs($this->admin)->get(route('sale.show', $sale->id))->assertOk()->assertSee('At sale')->assertSee('BANK-55')->assertSee($seller->name);
-        $this->actingAs($this->admin)->get(route('sale.create'))->assertOk()->assertSee('COMPLETE SALE');
+        $this->actingAs($this->admin)->get(route('sale.create'))->assertOk()->assertSee('Complete Sale')->assertSee('Point of Sale');
     }
 
     // ---- existing data --------------------------------------------------------
