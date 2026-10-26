@@ -33,7 +33,7 @@ class StockReconciliationController extends Controller
             ->get()
             ->filter(fn ($s) => $s->quantity != $s->active_imei_count && ($s->product->requiresImei() || $s->active_imei_count > $s->quantity));
 
-        $adjustments = StockAdjustment::with(['mainStock.product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'branch', 'requester', 'reviewer'])
+        $adjustments = StockAdjustment::with(['mainStock.product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'branch', 'toBranch', 'requester', 'reviewer'])
             ->when($request->user()->allowedBranchIds(), fn ($q, $ids) => $q->whereIn('branch_id', $ids))
             ->orderByRaw("status = 'pending' DESC")
             ->latest('id')
@@ -57,24 +57,36 @@ class StockReconciliationController extends Controller
             ->when($request->user()->allowedBranchIds(), fn ($q, $ids) => $q->whereIn('id', $ids))
             ->orderBy('name')->get();
         $selected = $request->stock_id;
+        // transfer: je kono active branch e pathano jay
+        $allBranches = Branch::where('status', 1)->orderBy('name')->get();
+        $token = (string) \Illuminate\Support\Str::uuid(); // ekoi form duibar submit hole ekta request
 
-        return view('back-end.stock-reconciliation.create', compact('name', 'title', 'stocks', 'branches', 'selected'));
+        return view('back-end.stock-reconciliation.create', compact('name', 'title', 'stocks', 'branches', 'selected', 'allBranches', 'token'));
     }
 
     public function store(Request $request)
     {
         $isRegistration = $request->type === StockAdjustment::TYPE_IMEI_REGISTRATION;
         $isCorrection = $request->type === StockAdjustment::TYPE_QUANTITY_CORRECTION;
+        $isWriteOff = $request->type === StockAdjustment::TYPE_IMEI_WRITE_OFF;
+        $isOpening = $request->type === StockAdjustment::TYPE_OPENING_STOCK;
+        $isTransfer = $request->type === StockAdjustment::TYPE_TRANSFER;
 
         $request->validate([
             'type'                  => 'required|in:' . implode(',', array_keys(StockAdjustment::TYPES)),
             'main_stock_id'         => 'required|exists:main_stocks,id',
             'branch_id'             => 'required|exists:branches,id',
+            'to_branch_id'          => $isTransfer ? 'required|exists:branches,id|different:branch_id' : 'nullable',
             'reason'                => 'required|string|min:10|max:2000',
-            'imeis'                 => $isCorrection ? 'nullable' : 'required|string',
+            // form e lage; purono client na pathale saadharon adjustment
+            'reason_type'           => 'nullable|in:' . implode(',', array_keys(StockAdjustment::REASONS)),
+            // opening/transfer: IMEI wala hole IMEI, na hole quantity (service jachai kore)
+            'imeis'                 => $isRegistration || $isWriteOff ? 'required|string' : 'nullable|string',
             'verified_model_number' => $isRegistration ? 'required|string|max:255' : 'nullable',
             'physically_verified'   => $isRegistration ? 'accepted' : 'nullable',
-            'quantity'              => $isCorrection ? 'required|integer|not_in:0' : 'nullable',
+            'quantity'              => $isCorrection ? 'required|integer|not_in:0' : ($isOpening ? 'required|integer|min:1' : 'nullable|integer|min:0'),
+            'unit_cost'             => $isOpening ? 'required|numeric|min:0' : 'nullable',
+            'request_token'         => 'nullable|string|max:64',
         ], [
             'physically_verified.accepted' => 'Confirm that you have the physical devices and checked each IMEI.',
         ]);
@@ -89,6 +101,10 @@ class StockReconciliationController extends Controller
             return back()->with('error', errorMessage($e))->withInput();
         }
 
+        if (!$adjustment->wasRecentlyCreated) {
+            return redirect()->route('stock-reconciliation.show', $adjustment->id)->with('success', "Request {$adjustment->adjustment_no} was already submitted.");
+        }
+
         Toastr::success("Request {$adjustment->adjustment_no} submitted for approval.");
         return redirect()->route('stock-reconciliation.show', $adjustment->id);
     }
@@ -98,7 +114,7 @@ class StockReconciliationController extends Controller
         $name = $this->heading;
         $title = $this->heading;
 
-        $adjustment = StockAdjustment::with(['mainStock.product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'branch', 'requester', 'reviewer'])
+        $adjustment = StockAdjustment::with(['mainStock.product', 'mainStock.ram', 'mainStock.rom', 'mainStock.color', 'branch', 'toBranch', 'requester', 'reviewer'])
             ->findOrFail($id);
         abort_unless($request->user()->canAccessBranch($adjustment->branch_id), 403);
 

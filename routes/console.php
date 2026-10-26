@@ -252,3 +252,42 @@ Artisan::command('suppliers:reconcile {--apply : Fix running balances and invoic
 
     return $issues ? 1 : 0;
 })->purpose('Check supplier ledgers against purchases, returns and payments (dry-run by default; never changes amounts)');
+
+// Negative stock (shudhu IMEI chara product): config('inventory.allow_negative_stock') er sathe database er
+// CHECK constraint ta o bondho korte hoy. disable abar constraint dey - kono stock negative thakle na.
+// Default dry-run; --apply dile kore. Backup niye chalan.
+Artisan::command('inventory:negative-stock {mode : enable or disable} {--apply : Change the database (otherwise dry-run)}', function () {
+    $mode = $this->argument('mode');
+    if (!in_array($mode, ['enable', 'disable'], true)) {
+        $this->error('Mode must be "enable" or "disable".');
+        return 1;
+    }
+
+    $active = App\Services\StockService::negativeConstraintActive(true);
+    $negative = App\Models\MainStock::where('quantity', '<', 0)->count();
+    $this->line('Database check constraint: ' . ($active ? 'ON (negative stock blocked)' : 'OFF') . '; config allow_negative_stock: '
+        . (config('inventory.allow_negative_stock') ? 'true' : 'false') . "; variants below zero: {$negative}");
+
+    if (($mode === 'enable') !== $active) {
+        $this->info('Nothing to change.');
+        return 0;
+    }
+    if ($mode === 'disable' && $negative) {
+        $this->error("{$negative} variant(s) are below zero. Fix them (purchase or adjustment) before blocking negative stock again.");
+        return 1;
+    }
+    if (!$this->option('apply')) {
+        $this->warn('Dry-run: nothing was changed. Take a database backup, then run again with --apply.');
+        return 0;
+    }
+
+    $name = App\Services\StockService::NEGATIVE_CONSTRAINT;
+    Illuminate\Support\Facades\DB::statement($mode === 'enable'
+        ? "ALTER TABLE main_stocks DROP CONSTRAINT {$name}"
+        : "ALTER TABLE main_stocks ADD CONSTRAINT {$name} CHECK (quantity >= 0)");
+    App\Services\AuditLogger::log('inventory.negative_stock_' . $mode . 'd');
+
+    $this->info($mode === 'enable'
+        ? 'Negative stock is now allowed by the database for items without IMEI (when ALLOW_NEGATIVE_STOCK=true).'
+        : 'Negative stock is blocked by the database again.');
+})->purpose('Allow or block negative stock for non-IMEI items at database level (dry-run by default)');

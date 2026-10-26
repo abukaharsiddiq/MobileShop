@@ -195,7 +195,11 @@ public function store(Request $request)
             if (!$stock) {
                 throw new \Exception("Stock record for {$detail->product->product_name} was not found.");
             }
-            $this->stockService->move($stock, $k, StockService::SALE_RETURN, $saleReturn);
+            // je branch e bikri hoyechilo (phone er branch), IMEI chara hole user er branch; ekoi line duibar na (key)
+            $branches = collect($line['imeis'] ?? [])->pluck('branch_id')->filter()->unique();
+            $this->stockService->move($stock, $k, StockService::SALE_RETURN, $saleReturn, null,
+                $branches->count() === 1 ? (int) $branches->first() : \App\Models\Branch::currentId(),
+                "sale_return:{$saleReturn->id}:{$detail->id}");
 
             if ($line['imeis']) {
                 $perUnit = round($refund / $k, 2);

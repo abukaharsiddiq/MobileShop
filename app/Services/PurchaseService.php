@@ -197,7 +197,7 @@ class PurchaseService
             PriceHistory::record($product, $stock, PriceHistory::LAST_COST, $oldLast, $detail->purchase_price, 'purchase', $purchase);
             PriceHistory::record($product, $stock, PriceHistory::AVERAGE_COST, $oldAvg, $newAvg, 'purchase', $purchase);
 
-            $this->stock->move($stock, $qty, StockService::PURCHASE, $purchase, null, $branchId);
+            $this->stock->move($stock, $qty, StockService::PURCHASE, $purchase, null, $branchId, 'purchase:' . $detail->id);
 
             foreach ($devices as [$imei1, $imei2]) {
                 $this->imeis->register($product, $stock->id, $branchId, $imei1, $imei2, ImeiService::PURCHASE, $purchase,
@@ -531,7 +531,7 @@ class PurchaseService
                 PriceHistory::record($detail->product, $stock, PriceHistory::AVERAGE_COST, $oldAvg, $stock->average_purchase_price, 'purchase_cancelled', $purchase);
             }
 
-            $this->stock->move($stock, -$detail->quantity, StockService::PURCHASE_DELETED, $purchase, 'Purchase cancelled');
+            $this->stock->move($stock, -$detail->quantity, StockService::PURCHASE_DELETED, $purchase, 'Purchase cancelled', $purchase->branch_id, 'purchase_cancel:' . $detail->id);
         }
 
         // IMEI record muchhar age itihash e rakha (line er imei_list e number thake)

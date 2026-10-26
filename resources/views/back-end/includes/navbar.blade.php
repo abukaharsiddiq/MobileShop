@@ -436,6 +436,12 @@
                     <p>Stock Reconciliation</p>
                 </a>
             </li>
+            <li class="nav-item">
+                <a href="{{ route('stock-count.index') }}" class="nav-link {{ request()->routeIs('stock-count.*') ? 'active' : '' }}">
+                    <i class="fas fa-clipboard-check nav-icon"></i>
+                    <p>Physical Stock Count</p>
+                </a>
+            </li>
         @endif
 
         {{-- IMEI khoja/itihash ar status onujayi list --}}
@@ -470,12 +476,31 @@
 
                     {{-- Stock Report --}}
                     @if($isAdmin || auth()->user()->can('read stock report'))
-                    <li class="nav-item {{ request()->routeIs('reports.stock') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('reports.stock') ? 'active' : '' }}">
+                    @php $lowStockCount = \App\Http\Controllers\StockReportController::lowStockCount(); @endphp
+                    <li class="nav-item {{ request()->routeIs('reports.stock', 'reports.stock_ledger', 'reports.stock_valuation', 'reports.low_stock') ? 'menu-open' : '' }}">
+                        <a href="#" class="nav-link {{ request()->routeIs('reports.stock', 'reports.stock_ledger', 'reports.stock_valuation', 'reports.low_stock') ? 'active' : '' }}">
                             <i class="far fa-folder nav-icon"></i>
-                            <p>Stock Report <i class="fas fa-angle-left right"></i></p>
+                            <p>Stock Report @if($lowStockCount)<span class="badge badge-warning right">{{ $lowStockCount }}</span>@endif <i class="fas fa-angle-left right"></i></p>
                         </a>
                         <ul class="nav nav-treeview">
+                            <li class="nav-item">
+                                <a href="{{ route('reports.low_stock') }}" class="nav-link {{ request()->routeIs('reports.low_stock') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Low Stock Alert @if($lowStockCount)<span class="badge badge-warning right">{{ $lowStockCount }}</span>@endif</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('reports.stock_ledger') }}" class="nav-link {{ request()->routeIs('reports.stock_ledger') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Stock Ledger</p>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="{{ route('reports.stock_valuation') }}" class="nav-link {{ request()->routeIs('reports.stock_valuation') ? 'active' : '' }}">
+                                    <i class="far fa-circle nav-icon"></i>
+                                    <p>Stock Valuation</p>
+                                </a>
+                            </li>
                             <li class="nav-item">
                                 <a href="{{ route('reports.stock') }}" class="nav-link {{ request()->routeIs('reports.stock') ? 'active' : '' }}">
                                     <i class="far fa-circle nav-icon"></i>

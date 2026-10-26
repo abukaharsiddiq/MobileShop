@@ -108,7 +108,7 @@ class PurchaseReturnService
             $lineTotal = round($qty * $price, 2);
             $total += $lineTotal;
 
-            PurchaseReturnDetail::create([
+            $returnDetail = PurchaseReturnDetail::create([
                 'purchase_return_id' => $return->id,
                 'product_id'         => $stock->product_id,
                 'main_stock_id'      => $stock->id,
@@ -129,7 +129,10 @@ class PurchaseReturnService
                 PriceHistory::record($stock->product, $stock, PriceHistory::AVERAGE_COST, $oldAvg, $stock->average_purchase_price, 'purchase_return', $return);
             }
 
-            $this->stock->move($stock, -$qty, StockService::PURCHASE_RETURN, $return);
+            // phone er branch theke (IMEI chara hole user er branch); ekoi line duibar na
+            $branches = $devices->pluck('branch_id')->filter()->unique();
+            $this->stock->move($stock, -$qty, StockService::PURCHASE_RETURN, $return, null,
+                $branches->count() === 1 ? (int) $branches->first() : null, 'purchase_return:' . $returnDetail->id);
         }
 
         $total = round($total, 2);

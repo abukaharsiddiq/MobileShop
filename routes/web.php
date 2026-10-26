@@ -38,6 +38,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\InstallmentCollectionController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\StockReconciliationController;
+use App\Http\Controllers\StockCountController;
 use App\Http\Controllers\ImeiController;
 use App\Models\User;
 
@@ -394,6 +395,10 @@ Route::middleware(['auth'])->group(function () {
     Route::prefix('reports')->name('reports.')->group(function () {
         Route::get('/dead-stock', [StockReportController::class, 'DeadStockReport'])->name('dead.stock')->middleware('can:read stock report');
         Route::get('/stock', [StockReportController::class, 'stockReport'])->name('stock')->middleware('can:read stock report');
+        // stock ledger (reference shoho), valuation, low stock alert
+        Route::get('/stock-ledger', [StockReportController::class, 'stockLedger'])->name('stock_ledger')->middleware('can:read stock report');
+        Route::get('/stock-valuation', [StockReportController::class, 'valuation'])->name('stock_valuation')->middleware('can:read stock report');
+        Route::get('/low-stock', [StockReportController::class, 'lowStock'])->name('low_stock')->middleware('can:read stock report');
         // IMEI khoja + puro itihash; IMEI stock list (status onujayi)
         Route::get('/imei-tracking', [ImeiController::class, 'search'])->name('imei')->middleware('permission:read sales report|search imei');
         Route::get('/imei-stock', [ImeiController::class, 'index'])->name('imei.stock')->middleware('permission:read stock report|search imei');
@@ -427,6 +432,17 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/reject/{id}', [StockReconciliationController::class, 'reject'])->name('reject')->middleware('can:approve stock adjustment');
     });
     /* stock reconciliation */
+
+    /* physical stock count (gona -> submit -> approve) */
+    Route::prefix('stock-count')->name('stock-count.')->group(function () {
+        Route::get('/', [StockCountController::class, 'index'])->name('index')->middleware('can:read stock adjustment');
+        Route::post('/store', [StockCountController::class, 'store'])->name('store')->middleware('can:create stock adjustment');
+        Route::get('/show/{id}', [StockCountController::class, 'show'])->name('show')->middleware('can:read stock adjustment');
+        Route::put('/update/{id}', [StockCountController::class, 'update'])->name('update')->middleware('can:create stock adjustment');
+        Route::post('/approve/{id}', [StockCountController::class, 'approve'])->name('approve')->middleware('can:approve stock adjustment');
+        Route::post('/cancel/{id}', [StockCountController::class, 'cancel'])->name('cancel')->middleware('can:create stock adjustment');
+    });
+    /* physical stock count */
 
 
     /* installment */

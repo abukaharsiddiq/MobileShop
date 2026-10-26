@@ -15,6 +15,12 @@ return [
     */
     'purchase_requires_approval' => (bool) env('PURCHASE_REQUIRES_APPROVAL', false),
 
+    /*
+    | Negative stock: default bondho. true hole shudhu IMEI chara product (accessory) stock er beshi
+    | bikri/kombe parbe (pore purchase e mile jabe). IMEI wala phone kokhono negative hoy na.
+    */
+    'allow_negative_stock' => (bool) env('ALLOW_NEGATIVE_STOCK', false),
+
     // product unit (form er select ar validation)
     'units' => ['pcs', 'box', 'set', 'pair', 'pack'],
 

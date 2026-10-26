@@ -174,7 +174,7 @@ class ImeiService
      */
     public function assertNotPendingRegistration(array $imeis, ?int $exceptAdjustmentId = null): void
     {
-        $pending = StockAdjustment::where('type', StockAdjustment::TYPE_IMEI_REGISTRATION)
+        $pending = StockAdjustment::whereIn('type', [StockAdjustment::TYPE_IMEI_REGISTRATION, StockAdjustment::TYPE_OPENING_STOCK])
             ->where('status', StockAdjustment::STATUS_PENDING)
             ->when($exceptAdjustmentId, fn ($q) => $q->where('id', '!=', $exceptAdjustmentId))
             ->get()
@@ -272,6 +272,18 @@ class ImeiService
 
         $imei->update(['status' => ProductImei::STATUS_RETURNED_TO_SUPPLIER, 'reserved_customer_id' => null, 'status_changed_at' => now()]);
         $this->record($imei, self::PURCHASE_RETURN, $purchaseReturn, 'Returned to supplier #' . $supplierId, $supplierId);
+    }
+
+    // Branch transfer: dokane thaka phone (available/damaged; reserved/repair na) onno branch e
+    public function transfer(ProductImei $imei, int $toBranchId, Model $reference, ?string $note = null): void
+    {
+        if (!in_array((int) $imei->status, [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_DAMAGED], true)) {
+            throw new \Exception("IMEI {$imei->imei_no} is {$imei->statusText()} and cannot be transferred.");
+        }
+
+        $from = $imei->branch_id;
+        $imei->update(['branch_id' => $toBranchId]);
+        $this->record($imei, self::TRANSFER, $reference, trim("From branch #{$from} to #{$toBranchId}. " . $note));
     }
 
     // Haralo/churi/nosto: stock adjustment approve hole (stock o kome)
