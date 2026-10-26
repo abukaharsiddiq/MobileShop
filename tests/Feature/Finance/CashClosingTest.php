@@ -183,6 +183,19 @@ class CashClosingTest extends FinanceTestCase
         $this->assertSame(0, JournalEntry::where('event', 'cash_count_difference')->where('cash_session_id', $this->cashSession()->id)->count());
     }
 
+    public function test_open_time_does_not_change_when_the_session_is_closed_and_approved(): void
+    {
+        // database er ghori (ON UPDATE) open er somoy bodlale dhora porbe
+        $this->travel(-2)->hours();
+        $this->open(100);
+        $opened = $this->cashSession()->getRawOriginal('opened_at');
+        $this->travelBack();
+
+        $this->close(['counted_balance' => 100])->assertSessionMissing('error');
+        $this->review('approve')->assertSessionMissing('error');
+        $this->assertSame($opened, $this->cashSession()->getRawOriginal('opened_at'));
+    }
+
     public function test_recount_and_reopen_by_manager(): void
     {
         $this->open(1000);
@@ -351,6 +364,10 @@ class CashClosingTest extends FinanceTestCase
         $this->close(['counted_balance' => 2500]);
         $this->review('approve')->assertSessionMissing('error');
 
+        fwrite(STDERR, "
+");
+        fwrite(STDERR, "
+");
         $this->actingAs($this->manager)->get(route('cash-closing.print', $session->id))->assertOk()
             ->assertSee('Daily Cash Closing')->assertSee('2,500.00')->assertSee('bKash');
         $csv = $this->actingAs($this->manager)->get(route('cash-closing.export'));
