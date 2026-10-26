@@ -49,6 +49,8 @@
                                         <span class="badge badge-success">Paid</span>
                                     @elseif($item->payment_status == 'Partial')
                                         <span class="badge badge-warning">Partial</span>
+                                    @elseif($item->payment_status == 'Returned')
+                                        <span class="badge badge-secondary">Returned</span>
                                     @else
                                         <span class="badge badge-danger">Due</span>
                                     @endif
@@ -110,6 +112,8 @@
             <form id="paymentForm" action="{{ route('purchase.payment') }}" method="POST">
                 @csrf
                 <input type="hidden" name="purchase_id" id="modal_purchase_id">
+                {{-- ekoi form duibar submit hole server ekbar e hishab kore --}}
+                <input type="hidden" name="payment_token" value="{{ \Illuminate\Support\Str::uuid() }}">
                 <div class="modal-body">
                     <div class="form-group">
                         <label>Current Due</label>
@@ -121,7 +125,19 @@
                     </div>
                     <div class="form-group">
                         <label>Amount to Pay</label>
-                        <input type="number" name="paid_amount" id="modal_pay_amount" class="form-control" step="0.01" required>
+                        <input type="number" name="paid_amount" id="modal_pay_amount" class="form-control" step="0.01" min="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Payment Method</label>
+                        <select name="payment_method" class="form-control" required>
+                            @foreach(\App\Http\Controllers\SupplierPaymentController::METHODS as $method)
+                                <option value="{{ $method }}">{{ $method === 'Bank' ? 'Bank Transfer' : $method }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Reference (Cheque / Trx ID)</label>
+                        <input type="text" name="reference_no" class="form-control" maxlength="100" placeholder="Optional - the same reference cannot be used twice">
                     </div>
                     <div class="form-group">
                         <label>Note</label>
@@ -148,6 +164,11 @@
     $('#modal_pay_amount').attr('max', due).val(due); // ডিফল্টভাবে পুরো ডিউ অ্যামাউন্ট বসবে
     $('#paymentModal').modal('show');
 }
+
+// duibar click e duita payment na
+$('#paymentForm').on('submit', function () {
+    $(this).find('button[type=submit]').prop('disabled', true);
+});
 
 function confirmDelete(id) {
     if (confirm('Are you sure you want to delete this purchase? This will adjust stock and ledger!')) {

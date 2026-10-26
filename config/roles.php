@@ -28,7 +28,7 @@ return [
             'create ram', 'read ram', 'update ram',
             'create rom', 'read rom', 'update rom',
             'create color', 'read color', 'update color',
-            'create supplier', 'read supplier', 'update supplier',
+            'create supplier', 'read supplier', 'update supplier', 'create supplier payment',
             'create purchase', 'read purchase', 'update purchase',
             'create purchase return', 'read purchase return',
             'create customer', 'read customer', 'update customer',
@@ -60,7 +60,7 @@ return [
         'label' => 'Accountant',
         'home'  => 'sales.dashboard',
         'permissions' => [
-            'read supplier', 'read purchase', 'update purchase', 'read purchase return',
+            'read supplier', 'create supplier payment', 'read purchase', 'update purchase', 'read purchase return',
             'read customer', 'update customer', 'read sale', 'update sale', 'read return',
             'create installment', 'read installment',
             'create expense category', 'read expense category', 'update expense category',

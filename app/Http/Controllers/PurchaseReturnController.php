@@ -7,11 +7,10 @@ use App\Models\Supplier;
 use App\Models\MainStock;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnDetail;
-use App\Models\SupplierLedger;
 use App\Models\ProductImei;
 use App\Services\ImeiService;
 use App\Services\StockService;
-use App\Services\LedgerService;
+use App\Services\SupplierAccountService;
 use Brian2694\Toastr\Facades\Toastr;
 use DB;
 
@@ -21,7 +20,7 @@ class PurchaseReturnController extends Controller
     public function __construct(
         private ImeiService $imeiService,
         private StockService $stockService,
-        private LedgerService $ledger,
+        private SupplierAccountService $accounts,
     ){
         $this->heading = "Purchase Return";
     }
@@ -178,15 +177,9 @@ public function showByRef($ref_no)
         $returnTotal = round($returnTotal, 2);
         $purchaseReturn->update(['total_amount' => $returnTotal]);
 
-        // সাপ্লায়ার লেজার: রিটার্ন মানে দেনা কমলো (Debit)
-        $this->ledger->supplierEntry([
-            'supplier_id'      => $request->supplier_id,
-            'date'             => $request->return_date,
-            'transaction_type' => 'Purchase Return',
-            'reference_no'     => $request->return_no,
-            'debit'            => $returnTotal,
-            'note'             => $request->note ?? 'Items returned to supplier',
-        ]);
+        // সাপ্লায়ার লেজার: রিটার্ন মানে দেনা কমলো (Debit); invoice er due o kome (settle).
+        // Payable er beshi hole baki ta supplier er kache agrim (advance) hoy
+        $this->accounts->recordReturn($purchaseReturn);
 
         DB::commit();
         Toastr::success('Data Return Successfully', 'Success', [
