@@ -10,7 +10,7 @@
         <div class="card-body">
             <form action="{{ route('supplier.due.report') }}" method="GET">
                 <div class="row align-items-end">
-                    <div class="col-md-6">
+                    <div class="col-md-5">
                         <label class="font-weight-bold">Select Supplier</label>
                         <select name="supplier_id" class="form-control select2">
                             <option value="">-- All Suppliers --</option>
@@ -19,6 +19,14 @@
                                     {{ $s->name }}
                                 </option>
                             @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="font-weight-bold">Balance</label>
+                        <select name="balance" class="form-control">
+                            <option value="">All</option>
+                            <option value="due" @selected(request('balance') === 'due')>Only due</option>
+                            <option value="advance" @selected(request('balance') === 'advance')>Only advance</option>
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -42,35 +50,38 @@
                             <th>SL</th>
                             <th>Supplier Name</th>
                             <th>Phone</th>
-                            <th class="text-right">Total Purchase (Cr)</th>
-                            <th class="text-right">Total Paid (Dr)</th>
-                            <th class="text-right">Current Balance</th>
+                            <th class="text-right">Total Purchase</th>
+                            <th class="text-right">Total Paid</th>
+                            <th class="text-right">Total Returned</th>
+                            <th class="text-right">Due</th>
+                            <th class="text-right">Advance</th>
                             <th class="text-center d-print-none">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @php 
-                            $grand_total_purchase = 0; $grand_total_paid = 0; $grand_total_due = 0;
-                        @endphp
-                        @foreach($suppliers as $key => $supplier)
-                            @php 
-                                $purchase = $supplier->ledgers->sum('credit');
-                                $paid = $supplier->ledgers->sum('debit');
-                                $balance = $purchase - $paid;
-                                $grand_total_purchase += $purchase;
-                                $grand_total_paid += $paid;
-                                $grand_total_due += $balance;
+                        @php $sum = ['purchase' => 0, 'paid' => 0, 'returned' => 0, 'due' => 0, 'advance' => 0]; @endphp
+                        @foreach($suppliers->values() as $key => $supplier)
+                            @php
+                                $t = $totals[$supplier->id] ?? null;
+                                $balance = (float) $supplier->ledger_balance;
+                                $row = [
+                                    'purchase' => (float) ($t->purchase ?? 0),
+                                    'paid'     => (float) ($t->paid ?? 0),
+                                    'returned' => (float) ($t->returned ?? 0),
+                                    'due'      => \App\Models\Supplier::dueOf($balance),
+                                    'advance'  => \App\Models\Supplier::advanceOf($balance),
+                                ];
+                                foreach ($row as $k => $v) { $sum[$k] += $v; }
                             @endphp
                             <tr>
                                 <td>{{ $key + 1 }}</td>
                                 <td>{{ $supplier->name }}</td>
                                 <td>{{ $supplier->phone }}</td>
-                                <td class="text-right">{{ number_format($purchase, 2) }}</td>
-                                <td class="text-right">{{ number_format($paid, 2) }}</td>
-                                <td class="text-right font-weight-bold {{ $balance > 0 ? 'text-danger' : 'text-success' }}">
-                                    {{ number_format(abs($balance), 2) }} 
-                                    <small>{{ $balance >= 0 ? '(Due)' : '(Adv)' }}</small>
-                                </td>
+                                <td class="text-right">{{ number_format($row['purchase'], 2) }}</td>
+                                <td class="text-right">{{ number_format($row['paid'], 2) }}</td>
+                                <td class="text-right">{{ number_format($row['returned'], 2) }}</td>
+                                <td class="text-right font-weight-bold text-danger">{{ $row['due'] > 0 ? number_format($row['due'], 2) : '-' }}</td>
+                                <td class="text-right font-weight-bold text-success">{{ $row['advance'] > 0 ? number_format($row['advance'], 2) : '-' }}</td>
                                 <td class="text-center d-print-none">
                                     <a href="{{ route('supplier.ledger', $supplier->id) }}" class="btn btn-sm btn-info" title="View Ledger"><i class="fa fa-eye"></i></a>
                                 </td>
@@ -80,9 +91,11 @@
                     <tfoot class="bg-light font-weight-bold">
                         <tr>
                             <td colspan="3" class="text-right">Grand Total:</td>
-                            <td class="text-right">{{ number_format($grand_total_purchase, 2) }}</td>
-                            <td class="text-right">{{ number_format($grand_total_paid, 2) }}</td>
-                            <td class="text-right text-primary">{{ number_format($grand_total_due, 2) }}</td>
+                            <td class="text-right">{{ number_format($sum['purchase'], 2) }}</td>
+                            <td class="text-right">{{ number_format($sum['paid'], 2) }}</td>
+                            <td class="text-right">{{ number_format($sum['returned'], 2) }}</td>
+                            <td class="text-right text-danger">{{ number_format($sum['due'], 2) }}</td>
+                            <td class="text-right text-success">{{ number_format($sum['advance'], 2) }}</td>
                             <td class="d-print-none"></td>
                         </tr>
                     </tfoot>

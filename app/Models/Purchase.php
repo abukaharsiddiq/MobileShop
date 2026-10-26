@@ -17,6 +17,7 @@ class Purchase extends Model
         'payment_method',
         'payment_account',
         'paid_amount',
+        'return_amount',
         'due_amount',
         'payment_status',
         'note',
@@ -30,6 +31,11 @@ class Purchase extends Model
     public function supplier() {
     return $this->belongsTo(Supplier::class, 'supplier_id');
 }
+
+    public function payments()
+    {
+        return $this->hasMany(SupplierPayment::class);
+    }
 
     public function product_imeis()
 {

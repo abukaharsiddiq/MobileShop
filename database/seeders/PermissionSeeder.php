@@ -59,6 +59,9 @@ class PermissionSeeder extends Seeder
         }
 
         return array_merge($permissions, [
+            ['create supplier payment', 'Supplier Payment'],       // taka deya, agrim, supplier er refund
+            ['void supplier payment', 'Supplier Payment'],
+            ['update supplier opening balance', 'Supplier'],
             ['create purchase return', 'Purchase Return'],
             ['read purchase return', 'Purchase Return'],
             ['create return', 'Sale Return'],

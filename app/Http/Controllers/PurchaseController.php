@@ -9,13 +9,12 @@ use App\Models\Purchase;
 use App\Models\PurchaseDetail;
 use App\Models\ProductImei;
 use App\Models\MainStock;
-use App\Models\SupplierLedger;
 use App\Models\Setting;
 use App\Models\Branch;
 use App\Services\ImeiService;
 use App\Services\InvoiceNumberService;
-use App\Services\LedgerService;
 use App\Services\StockService;
+use App\Services\SupplierAccountService;
 use App\Services\VariantService;
 use App\Models\PriceHistory;
 use Brian2694\Toastr\Facades\Toastr;
@@ -29,8 +28,8 @@ class PurchaseController extends Controller
         private ImeiService $imeiService,
         private StockService $stockService,
         private InvoiceNumberService $invoiceNumbers,
-        private LedgerService $ledger,
         private VariantService $variants,
+        private SupplierAccountService $accounts,
     ){
         $this->heading = "Purchase";
     }
@@ -46,7 +45,7 @@ class PurchaseController extends Controller
 {
     $name = $this->heading;
     $title = $this->heading;
-    $suppliers = Supplier::latest()->get();
+    $suppliers = Supplier::active()->latest()->get(); // inactive supplier theke kena jay na
     $products = Product::where('status', 1)->latest()->get(); // inactive product kena jay na
     $next_invoice_number = $this->invoiceNumbers->previewPurchase(); // shudhu dekhanor jonno
 
@@ -81,6 +80,11 @@ public function store(Request $request)
     DB::beginTransaction();
 
     try {
+        $supplier = Supplier::lockForUpdate()->findOrFail($request->supplier_id);
+        if (!$supplier->isActive()) {
+            throw new \Exception("{$supplier->name} is inactive. Activate the supplier before purchasing.");
+        }
+
         // ১. Save to Purchases Table
         $purchase = new Purchase();
         // Invoice number save er somoy toiri hoy; total gulo item loop er pore server e hishab hoy
@@ -201,35 +205,17 @@ public function store(Request $request)
             throw new \Exception('Paid amount (' . number_format($paid, 2) . ') cannot be more than the grand total (' . number_format($grandTotal, 2) . ').');
         }
 
+        // paid/due supplier ledger theke (settle) bose: form er taka + supplier er kache thaka agrim
         $purchase->subtotal       = $subtotal;
         $purchase->discount       = $discount;
         $purchase->grand_total    = $grandTotal;
-        $purchase->paid_amount    = $paid;
-        $purchase->due_amount     = round($grandTotal - $paid, 2);
-        $purchase->payment_status = $this->paymentStatus($purchase);
+        $purchase->paid_amount    = 0;
+        $purchase->due_amount     = $grandTotal;
+        $purchase->payment_status = 'Due';
         $purchase->save();
 
         // Supplier ledger: bill (dena barlo), ar payment thakle
-        $this->ledger->supplierEntry([
-            'supplier_id'      => $purchase->supplier_id,
-            'date'             => $purchase->purchase_date,
-            'transaction_type' => 'Purchase',
-            'purchase_id'      => $purchase->id,
-            'reference_no'     => $purchase->invoice_no,
-            'credit'           => $grandTotal,
-            'note'             => 'Purchase Bill Generated',
-        ]);
-        if ($paid > 0) {
-            $this->ledger->supplierEntry([
-                'supplier_id'      => $purchase->supplier_id,
-                'date'             => $purchase->purchase_date,
-                'transaction_type' => 'Payment',
-                'purchase_id'      => $purchase->id,
-                'reference_no'     => $purchase->invoice_no,
-                'debit'            => $paid,
-                'note'             => 'Payment for Invoice #' . $purchase->invoice_no,
-            ]);
-        }
+        $this->accounts->recordPurchase($purchase, $paid);
 
         DB::commit();
         Toastr::success('Data Added Successfully', 'Success', [
@@ -325,12 +311,9 @@ public function show($id)
         // ৩. IMEI মোছা
         ProductImei::where('purchase_id', $purchase->id)->delete();
 
-        // ৪. সাপ্লায়ার লেজার থেকে এন্ট্রি মোছা
-        // এই ইনভয়েসের সাথে জড়িত সব ক্রেডিট/ডেবিট এন্ট্রি ডিলিট করা
-        SupplierLedger::where('purchase_id', $id)->delete();
-
-        // ৫. লেজার ব্যালেন্স রিক্যালকুলেট করা (ঐ সাপ্লায়ারের জন্য)
-        $this->ledger->recalculateSupplier($purchase->supplier_id);
+        // ৪-৫. সাপ্লায়ার লেজার: bill ar purchase form e deya taka jay, balance abar hishab.
+        // Pore deya payment thakle atkay (agey void korte hobe)
+        $this->accounts->removePurchase($purchase);
 
         // ৬. পারচেজ এবং ডিটেইলস ডিলিট করা
         $purchase->purchaseDetails()->delete(); // রিলেশনশিপ থাকলে এটি কাজ করবে
@@ -351,52 +334,39 @@ public function show($id)
 public function updatePayment(Request $request)
 {
     $request->validate([
-        'purchase_id' => 'required|exists:purchases,id',
-        'paid_amount' => 'required|numeric|min:0.01',
-        'payment_date'=> 'required|date',
+        'purchase_id'     => 'required|exists:purchases,id',
+        'paid_amount'     => 'required|numeric|min:0.01',
+        'payment_date'    => 'required|date',
+        'payment_method'  => 'nullable|string|max:50',
+        'payment_account' => 'nullable|string|max:255',
+        'reference_no'    => 'nullable|string|max:100',
+        'payment_token'   => 'nullable|string|max:64',
     ]);
 
     DB::beginTransaction();
     try {
-        $purchase = Purchase::lockForUpdate()->findOrFail($request->purchase_id);
-        $amount = round((float) $request->paid_amount, 2);
-        $due = round((float) $purchase->due_amount, 2);
+        $purchase = Purchase::with('supplier')->findOrFail($request->purchase_id);
 
-        // due er beshi supplier ke deya jay na
-        if ($amount > $due) {
-            throw new \Exception("Invoice {$purchase->invoice_no} has only " . number_format($due, 2) . ' due. You cannot pay ' . number_format($amount, 2) . '.');
-        }
-
-        $purchase->paid_amount = round($purchase->paid_amount + $amount, 2);
-        $purchase->due_amount = round($due - $amount, 2);
-        $purchase->payment_status = $this->paymentStatus($purchase);
-        $purchase->save();
-
-        $this->ledger->supplierEntry([
-            'supplier_id'      => $purchase->supplier_id,
-            'date'             => $request->payment_date,
-            'transaction_type' => 'Payment',
-            'purchase_id'      => $purchase->id,
-            'reference_no'     => $purchase->invoice_no,
-            'debit'            => $amount,
-            'note'             => $request->note ?? "Due payment for Invoice #" . $purchase->invoice_no,
+        // due er beshi na, ekoi form duibar na, ekoi reference duibar na (SupplierAccountService)
+        $payment = $this->accounts->pay($purchase->supplier, [
+            'amount'          => $request->paid_amount,
+            'payment_date'    => $request->payment_date,
+            'payment_method'  => $request->payment_method,
+            'payment_account' => $request->payment_account,
+            'reference_no'    => $request->reference_no,
+            'purchase_id'     => $purchase->id,
+            'idempotency_key' => $request->payment_token,
+            'note'            => $request->note,
         ]);
 
         DB::commit();
-        return back()->with('success', 'Payment updated successfully.');
+        return back()->with('success', $payment->wasRecentlyCreated
+            ? "Payment {$payment->payment_no} recorded."
+            : "Payment {$payment->payment_no} was already recorded; nothing was added.");
     } catch (\Exception $e) {
         DB::rollBack();
         return back()->with('error', errorMessage($e));
     }
-}
-
-private function paymentStatus(Purchase $purchase)
-{
-    if ($purchase->due_amount <= 0) {
-        return 'Paid';
-    }
-
-    return $purchase->paid_amount > 0 ? 'Partial' : 'Due';
 }
 
 public function printInvoice($id) {

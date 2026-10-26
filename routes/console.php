@@ -212,3 +212,43 @@ Artisan::command('products:backfill-sku {--apply : Write the SKUs (otherwise dry
         $this->warn('Nothing was changed. Take a database backup, then run again with --apply.');
     }
 })->purpose('Fill missing variant SKUs (dry-run by default; never changes an existing SKU)');
+
+// Supplier ledger ki purchase/return/payment er sathe mele? Takar gormil shudhu dekhay (bodlay na).
+// --apply dile shudhu hishab theke ber hoy emon column thik kore: running balance ar invoice er paid/return/due.
+Artisan::command('suppliers:reconcile {--apply : Fix running balances and invoice paid/due (otherwise dry-run)} {--supplier= : Only this supplier id}', function (App\Services\SupplierReconciliationService $reconcile) {
+    $apply = (bool) $this->option('apply');
+    $suppliers = App\Models\Supplier::orderBy('id')
+        ->when($this->option('supplier'), fn ($q, $id) => $q->whereKey($id))
+        ->get();
+    $issues = 0;
+    $fixable = 0;
+
+    Illuminate\Support\Facades\DB::transaction(function () use ($suppliers, $reconcile, $apply, &$issues, &$fixable) {
+        foreach ($suppliers as $supplier) {
+            $result = $reconcile->check($supplier);
+            if (!$result['issues'] && !$result['running'] && !$result['invoices']) {
+                continue;
+            }
+
+            $this->line("supplier #{$supplier->id} {$supplier->name}:");
+            foreach ($result['issues'] as $issue) {
+                $this->warn('    ' . $issue);
+            }
+            if ($result['running'] || $result['invoices']) {
+                $this->line("    {$result['running']} running balance(s), {$result['invoices']} invoice paid/due " . ($apply ? 'fixed' : 'to fix'));
+                if ($apply) {
+                    $reconcile->apply($supplier);
+                }
+            }
+            $issues += count($result['issues']);
+            $fixable += $result['running'] + $result['invoices'];
+        }
+    });
+
+    $this->info(($apply ? 'Fixed' : 'Dry-run: would fix') . " {$fixable} calculated value(s). {$issues} money mismatch(es) need manual review.");
+    if (!$apply && $fixable) {
+        $this->warn('Take a database backup, then run again with --apply.');
+    }
+
+    return $issues ? 1 : 0;
+})->purpose('Check supplier ledgers against purchases, returns and payments (dry-run by default; never changes amounts)');

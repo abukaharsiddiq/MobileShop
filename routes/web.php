@@ -17,6 +17,7 @@ use App\Http\Controllers\ProductVariantController;
 use App\Http\Controllers\AttributeController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\SupplierPaymentController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -254,6 +255,13 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/due-report', [SupplierController::class, 'dueReport'])->name('due.report')->middleware('can:read supplier report');
 
         Route::get('/purchase-history/{id}', [SupplierController::class, 'purchaseHistory'])->name('purchase_history')->middleware('can:read supplier');
+        Route::get('/show/{id}', [SupplierController::class, 'show'])->name('show')->middleware('can:read supplier');
+        Route::get('/statement/{id}', [SupplierController::class, 'statement'])->name('statement')->middleware('can:read supplier');
+
+        // payment / agrim / supplier er refund ('update purchase' purono invoice payment er moto)
+        Route::get('/{id}/payment', [SupplierPaymentController::class, 'create'])->name('payment.create')->middleware('permission:create supplier payment|update purchase');
+        Route::post('/{id}/payment', [SupplierPaymentController::class, 'store'])->name('payment.store')->middleware('permission:create supplier payment|update purchase');
+        Route::post('/payment/{paymentId}/void', [SupplierPaymentController::class, 'void'])->name('payment.void')->middleware('can:void supplier payment');
     });
     /* supplier */
 
@@ -268,7 +276,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/change/status/{id}', [PurchaseController::class, 'changeStatus'])->name('status.change')->middleware('can:update purchase');
 
         Route::get('/show/{id}', [PurchaseController::class, 'show'])->name('show')->middleware('can:read purchase');
-        Route::post('/payment', [PurchaseController::class, 'updatePayment'])->name('payment')->middleware('can:update purchase');
+        Route::post('/payment', [PurchaseController::class, 'updatePayment'])->name('payment')->middleware('permission:create supplier payment|update purchase');
 
         Route::get('/print/{id}', [PurchaseController::class, 'printInvoice'])->name('print')->middleware('can:read purchase');
     });
