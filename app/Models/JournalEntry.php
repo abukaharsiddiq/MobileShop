@@ -34,6 +34,11 @@ class JournalEntry extends Model
         return $this->belongsTo(self::class, 'reversed_by_id');
     }
 
+    public function cashSession()
+    {
+        return $this->belongsTo(CashSession::class);
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

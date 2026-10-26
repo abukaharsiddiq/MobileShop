@@ -96,6 +96,9 @@ class PermissionSeeder extends Seeder
             ['reverse transaction', 'Accounts'],    // receipt/expense/income/transfer/journal batil
             ['reconcile account', 'Accounts'],
             ['read finance report', 'Report'],      // P&L, balance sheet, trial balance, income-expense
+            ['open cash session', 'Cash Closing'],    // nijer drawer: open, cash in/out, gona/close
+            ['read cash closing', 'Cash Closing'],    // shob cashier er session (nijer branch) + adjustment chaoa
+            ['approve cash closing', 'Cash Closing'], // approve, recount, reopen, adjustment approve
         ]);
     }
 }

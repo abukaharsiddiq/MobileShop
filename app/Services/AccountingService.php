@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Account;
 use App\Models\Branch;
+use App\Models\CashSession;
 use App\Models\FinancialYear;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
@@ -26,7 +27,9 @@ use Illuminate\Support\Str;
 class AccountingService
 {
     /**
-     * $entry: date, event, source (Model) ba source_type/source_id, reference_no, narration, posting_key
+     * $entry: date, event, source (Model) ba source_type/source_id, reference_no, narration, posting_key,
+     *         cash_session_id (dile oi session; na dile cash line thakle cashier er open session - CashSession::forCashPosting),
+     *         drawer (false = boi er hishab, drawer e taka asa-jawa na)
      * $lines: [['account' => Account|system_key|id, 'debit' => x, 'credit' => y, 'party_type', 'party_id', 'memo']]
      */
     public function post(array $entry, array $lines): JournalEntry
@@ -48,6 +51,8 @@ class AccountingService
             throw new \Exception("This transaction is already posted ({$postingKey}). Reverse it first if it must be posted again.");
         }
 
+        $cashSessionId = $entry['cash_session_id'] ?? $this->drawerSession($entry, $lines);
+
         try {
             $journal = JournalEntry::create([
                 'entry_no'       => 'TMP-' . Str::random(20),
@@ -62,6 +67,7 @@ class AccountingService
                 'posting_key'    => $postingKey,
                 'reversal_of_id' => $entry['reversal_of_id'] ?? null,
                 'branch_id'      => $entry['branch_id'] ?? Branch::currentId(),
+                'cash_session_id' => $cashSessionId,
                 'created_by'     => auth()->id(),
             ]);
         } catch (QueryException $e) {
@@ -114,6 +120,8 @@ class AccountingService
             'posting_key'    => 'reversal:' . $journal->id,
             'reversal_of_id' => $journal->id,
             'branch_id'      => $journal->branch_id,
+            // ulta entry ajker drawer e (ager bondho session bodlay na); boi er entry hole drawer na
+            'drawer'         => !in_array($journal->event, CashSession::NON_DRAWER_EVENTS, true),
         ], $journal->lines->map(fn (JournalLine $line) => [
             'account'    => $line->account_id,
             'debit'      => $line->credit,
@@ -129,6 +137,22 @@ class AccountingService
             ['status' => JournalEntry::REVERSED, 'reversal' => $reversal->entry_no, 'reason' => $reason]);
 
         return $reversal;
+    }
+
+    /**
+     * Cash (drawer) account e line thakle login user er cash session; system/console posting (user nei) e session na.
+     */
+    private function drawerSession(array $entry, array $lines): ?int
+    {
+        $user = auth()->user();
+        $drawer = $entry['drawer'] ?? !in_array($entry['event'], CashSession::NON_DRAWER_EVENTS, true);
+        if (!$user || !$drawer) {
+            return null;
+        }
+
+        $cash = Account::whereIn('id', array_column($lines, 'account_id'))->where('subtype', 'cash')->exists();
+
+        return $cash ? CashSession::forCashPosting($user)?->id : null;
     }
 
     // Ekta document er live (reverse na kora) entry
