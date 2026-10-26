@@ -35,6 +35,7 @@ class ProductImei extends Model
 
     protected $fillable = [
         'purchase_id',
+        'purchase_detail_id',
         'sale_id',
         'sale_detail_id',
         'product_id',
@@ -153,6 +154,11 @@ class ProductImei extends Model
     public function purchase()
     {
         return $this->belongsTo(Purchase::class);
+    }
+
+    public function purchaseDetail()
+    {
+        return $this->belongsTo(PurchaseDetail::class);
     }
 
     // User je branch er device dhorte pare (branch chara purono record shobar jonno khola)

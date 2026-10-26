@@ -191,13 +191,15 @@ class ImeiService
 
     // Purchase/registration: notun device stock e (available)
     public function register(Product $product, int $mainStockId, ?int $branchId, string $imei1, ?string $imei2, string $event,
-                             ?Model $reference = null, ?string $note = null, ?int $supplierId = null, ?int $purchaseId = null): ProductImei
+                             ?Model $reference = null, ?string $note = null, ?int $supplierId = null, ?int $purchaseId = null,
+                             ?int $purchaseDetailId = null): ProductImei
     {
         $imei = ProductImei::create([
             'product_id'        => $product->id,
             'main_stock_id'     => $mainStockId,
             'branch_id'         => $branchId,
             'purchase_id'       => $purchaseId,
+            'purchase_detail_id' => $purchaseDetailId,
             'imei_no'           => $imei1,
             'imei_no_2'         => $imei2,
             'status'            => ProductImei::STATUS_AVAILABLE,

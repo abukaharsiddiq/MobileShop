@@ -59,6 +59,7 @@ class PermissionSeeder extends Seeder
         }
 
         return array_merge($permissions, [
+            ['approve purchase', 'Purchase'],                    // stock/ledger e jay (draft/pending -> approved)
             ['create supplier payment', 'Supplier Payment'],       // taka deya, agrim, supplier er refund
             ['void supplier payment', 'Supplier Payment'],
             ['update supplier opening balance', 'Supplier'],

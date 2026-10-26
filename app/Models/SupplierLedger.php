@@ -12,6 +12,7 @@ class SupplierLedger extends Model
 {
     const OPENING = 'Opening Balance';
     const PURCHASE = 'Purchase';
+    const PURCHASE_CANCEL = 'Purchase Cancelled';   // approve kora purchase cancel: bill er ulto (debit)
     const PAYMENT = 'Payment';
     const PURCHASE_RETURN = 'Purchase Return';
     const REFUND = 'Supplier Refund';

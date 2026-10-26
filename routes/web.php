@@ -273,7 +273,9 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/edit/{id}', [PurchaseController::class, 'edit'])->name('edit')->middleware('can:update purchase');
         Route::put('/update/{id}', [PurchaseController::class, 'update'])->name('update')->middleware('can:update purchase');
         Route::delete('/delete/{id}', [PurchaseController::class, 'delete'])->name('delete')->middleware('can:delete purchase');
-        Route::post('/change/status/{id}', [PurchaseController::class, 'changeStatus'])->name('status.change')->middleware('can:update purchase');
+        // workflow: submit / approve / cancel (kon kaj e kon permission - controller e)
+        Route::post('/change/status/{id}', [PurchaseController::class, 'changeStatus'])->name('status.change')->middleware('permission:create purchase|update purchase|approve purchase|delete purchase');
+        Route::post('/check-imeis', [PurchaseController::class, 'checkImeis'])->name('check_imeis')->middleware('permission:create purchase|update purchase');
 
         Route::get('/show/{id}', [PurchaseController::class, 'show'])->name('show')->middleware('can:read purchase');
         Route::post('/payment', [PurchaseController::class, 'updatePayment'])->name('payment')->middleware('permission:create supplier payment|update purchase');
@@ -288,6 +290,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/create', [PurchaseReturnController::class, 'create'])->name('create')->middleware('can:create purchase return');
         Route::post('/store', [PurchaseReturnController::class, 'store'])->name('store')->middleware('can:create purchase return');
         Route::get('/available-imeis/{stock_id}', [PurchaseReturnController::class, 'availableImeis'])->name('available_imeis')->middleware('can:create purchase return');
+        Route::get('/supplier-invoices/{supplier_id}', [PurchaseReturnController::class, 'supplierInvoices'])->name('supplier_invoices')->middleware('can:create purchase return');
         Route::get('/show/{id}', [PurchaseReturnController::class, 'show'])->name('show')->middleware('can:read purchase return');
         Route::get('/history', [PurchaseReturnController::class, 'history'])->name('history')->middleware('can:read purchase return');
         Route::get('/show-by-ref/{ref_no}', [PurchaseReturnController::class, 'showByRef'])->name('show_by_ref')->middleware('can:read purchase return');

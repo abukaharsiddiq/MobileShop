@@ -5,6 +5,7 @@
     $badge = [
         \App\Models\SupplierLedger::OPENING         => 'badge-dark',
         \App\Models\SupplierLedger::PURCHASE        => 'badge-info',
+        \App\Models\SupplierLedger::PURCHASE_CANCEL => 'badge-secondary',
         \App\Models\SupplierLedger::PAYMENT         => 'badge-success',
         \App\Models\SupplierLedger::PURCHASE_RETURN => 'badge-danger',
         \App\Models\SupplierLedger::REFUND          => 'badge-warning',
@@ -38,7 +39,7 @@
             <td>{{ date('d-m-Y', strtotime($row->date)) }}</td>
             <td>
                 @if($links && $row->purchase_id && $row->purchase)
-                    <a href="{{ route('purchase.show', $row->purchase_id) }}">{{ $row->transaction_type === \App\Models\SupplierLedger::PURCHASE ? $row->reference_no : $row->purchase->invoice_no }}</a>
+                    <a href="{{ route('purchase.show', $row->purchase_id) }}">{{ in_array($row->transaction_type, [\App\Models\SupplierLedger::PURCHASE, \App\Models\SupplierLedger::PURCHASE_CANCEL]) ? $row->reference_no : $row->purchase->invoice_no }}</a>
                     @if($row->supplier_payment_id)<br><small>{{ $row->reference_no }}</small>@endif
                 @elseif($links && $row->purchase_return_id)
                     <a href="{{ route('purchase-return.show', $row->purchase_return_id) }}">{{ $row->reference_no }}</a>

@@ -6,18 +6,13 @@ use Illuminate\Http\Request;
 use App\Models\Supplier;
 use App\Models\Product;
 use App\Models\Purchase;
-use App\Models\PurchaseDetail;
 use App\Models\ProductImei;
-use App\Models\MainStock;
-use App\Models\Setting;
-use App\Models\Branch;
-use App\Services\ImeiService;
 use App\Services\InvoiceNumberService;
-use App\Services\StockService;
+use App\Services\PurchaseService;
 use App\Services\SupplierAccountService;
-use App\Services\VariantService;
-use App\Models\PriceHistory;
 use Brian2694\Toastr\Facades\Toastr;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use DB;
 
 class PurchaseController extends Controller
@@ -25,310 +20,193 @@ class PurchaseController extends Controller
     private $heading;
 
     public function __construct(
-        private ImeiService $imeiService,
-        private StockService $stockService,
         private InvoiceNumberService $invoiceNumbers,
-        private VariantService $variants,
+        private PurchaseService $purchases,
         private SupplierAccountService $accounts,
     ){
         $this->heading = "Purchase";
     }
 
-    public function index(){
+    // Khoja: invoice/supplier invoice no, supplier, IMEI, status, payment status, tarikh
+    public function index(Request $request){
+        $request->validate([
+            'status'         => ['nullable', Rule::in(array_keys(Purchase::STATUSES))],
+            'payment_status' => 'nullable|in:Paid,Partial,Due,Returned',
+            'from_date'      => 'nullable|date',
+            'to_date'        => 'nullable|date',
+        ]);
         $name = $this->heading;
         $title = $this->heading;
-        $purchases = Purchase::with('supplier')->orderBy('id', 'desc')->get();
-        return view('back-end.purchase.index',compact('name','title','purchases'));
+
+        $purchases = Purchase::with('supplier')
+            ->when($request->q, function ($q, $term) {
+                $q->where(fn ($w) => $w->where('invoice_no', 'like', "%{$term}%")
+                    ->orWhere('supplier_invoice_no', 'like', "%{$term}%")
+                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', "%{$term}%")->orWhere('phone', 'like', "%{$term}%")));
+            })
+            ->when($request->imei, function ($q, $imei) {
+                // approve er por IMEI record e, draft/pending e line er imei_list e
+                $q->where(fn ($w) => $w->whereIn('id', ProductImei::where('imei_no', $imei)->orWhere('imei_no_2', $imei)->select('purchase_id'))
+                    ->orWhereHas('purchaseDetails', fn ($d) => $d->where('imei_list', 'like', "%{$imei}%")));
+            })
+            ->when($request->supplier_id, fn ($q, $id) => $q->where('supplier_id', $id))
+            ->when($request->status, fn ($q, $status) => $q->where('status', $status))
+            ->when($request->payment_status, fn ($q, $status) => $q->approved()->where('payment_status', $status))
+            ->when($request->from_date, fn ($q, $date) => $q->whereDate('purchase_date', '>=', $date))
+            ->when($request->to_date, fn ($q, $date) => $q->whereDate('purchase_date', '<=', $date))
+            ->orderByDesc('purchase_date')->orderByDesc('id')
+            ->paginate(25)->withQueryString();
+
+        $suppliers = Supplier::orderBy('name')->get(['id', 'name']);
+        $pendingCount = Purchase::where('status', Purchase::STATUS_PENDING)->count();
+
+        return view('back-end.purchase.index',compact('name','title','purchases','suppliers','pendingCount'));
     }
 
      public function create()
 {
-    $name = $this->heading;
-    $title = $this->heading;
-    $suppliers = Supplier::active()->latest()->get(); // inactive supplier theke kena jay na
-    $products = Product::where('status', 1)->latest()->get(); // inactive product kena jay na
-    $next_invoice_number = $this->invoiceNumbers->previewPurchase(); // shudhu dekhanor jonno
-
-    return view('back-end.purchase.create', compact(
-        'name', 
-        'title', 
-        'suppliers', 
-        'products', 
-        'next_invoice_number'
-    ));
+    return view('back-end.purchase.create', $this->formData(null));
 }
-
 
 public function store(Request $request)
 {
-    $request->validate([
-        'supplier_id'   => 'required|exists:suppliers,id',
-        'purchase_date' => 'required|date',
-        'items'         => 'required|array|min:1',
-        'items.*.product_id'    => 'required|exists:products,id',
-        'items.*.main_stock_id' => 'nullable|integer',
-        'items.*.ram_id'        => 'nullable|integer|exists:rams,id',
-        'items.*.rom_id'        => 'nullable|integer|exists:roms,id',
-        'items.*.color_id'      => 'nullable|integer|exists:colors,id',
-        'items.*.qty'           => 'required|integer|min:1',
-        'items.*.price'         => 'required|numeric|min:0',
-        'items.*.unit_discount' => 'nullable|numeric|min:0',
-        'discount'      => 'nullable|numeric|min:0',
-        'paid_amount'   => 'nullable|numeric|min:0',
-    ]);
+    $request->validate($this->rules());
+    $action = $this->action($request);
 
     DB::beginTransaction();
-
     try {
-        $supplier = Supplier::lockForUpdate()->findOrFail($request->supplier_id);
-        if (!$supplier->isActive()) {
-            throw new \Exception("{$supplier->name} is inactive. Activate the supplier before purchasing.");
-        }
-
-        // ১. Save to Purchases Table
-        $purchase = new Purchase();
-        // Invoice number save er somoy toiri hoy; total gulo item loop er pore server e hishab hoy
-        $purchase->supplier_id    = $request->supplier_id;
-        $purchase->invoice_no     = $this->invoiceNumbers->nextPurchase();
-        $purchase->purchase_date  = $request->purchase_date;
-        $purchase->subtotal       = 0;
-        $purchase->discount       = 0;
-        $purchase->grand_total    = 0;
-        $purchase->payment_method = $request->payment_method ?: 'cash';
-        $purchase->payment_account = $request->payment_account;
-        $purchase->paid_amount    = 0;
-        $purchase->due_amount     = 0;
-        $purchase->payment_status = 'Due';
-        $purchase->note           = $request->note;
-        $purchase->save();
-
-        $subtotal = 0;
-
-        // ৪. Loop through Items (Stock Update)
-        if ($request->items) {
-            $seenImeis = [];
-            $branchId = Branch::currentId();
-
-            foreach ($request->items as $item) {
-                $product = Product::findOrFail($item['product_id']);
-                $qty = (int) $item['qty'];
-
-                if (!$product->isActive()) {
-                    throw new \Exception("{$product->product_name} is inactive and cannot be purchased.");
-                }
-
-                // Variant: form theke bacha variant (main_stock_id), na thakle RAM/ROM/color (purono form) -
-                // oi variant na thakle notun variant (stock 0) toiri hoy, SKU shoho
-                if (!empty($item['main_stock_id'])) {
-                    $stock = MainStock::where('product_id', $product->id)->lockForUpdate()->find($item['main_stock_id']);
-                    if (!$stock) {
-                        throw new \Exception("{$product->product_name}: the selected variant does not belong to this product.");
-                    }
-                } else {
-                    $stock = $this->variants->findOrCreate($product,
-                        ($item['ram_id'] ?? null) ?: null, ($item['rom_id'] ?? null) ?: null, ($item['color_id'] ?? null) ?: null);
-                }
-                if (!$stock->status) {
-                    throw new \Exception("{$stock->variantLabel()} is inactive and cannot be purchased.");
-                }
-
-                // IMEI jachai (ImeiService e shob niyom)
-                // protiti phone ekta token: "IMEI1" ba dual-SIM "IMEI1/IMEI2"
-                $devices = ProductImei::parseDevices($item['imeis'] ?? '');
-                $this->imeiService->assertProductRules($product, $qty, $devices, $product->product_name);
-                $imeiList = $this->imeiService->assertNewDevices($product, $devices, $product->product_name);
-                // puro invoice e (shob line mile) ekoi number duibar na
-                $this->imeiService->assertValidNewImeis(array_merge($seenImeis, $imeiList));
-                $seenImeis = array_merge($seenImeis, $imeiList);
-                $this->imeiService->assertNotActive($imeiList);
-                $this->imeiService->assertRepurchaseAllowed($product, $imeiList);
-
-                // line er hishab server e
-                $lineGross = round($qty * (float) $item['price'], 2);
-                $lineDiscount = round((float) ($item['unit_discount'] ?? 0), 2);
-                if ($lineDiscount > $lineGross) {
-                    throw new \Exception("{$product->product_name}: discount cannot be more than the line total.");
-                }
-                $lineTotal = round($lineGross - $lineDiscount, 2);
-                $subtotal += $lineTotal;
-
-                // Save Purchase Details
-                $details = new PurchaseDetail();
-                $details->purchase_id    = $purchase->id;
-                $details->product_id     = $item['product_id'];
-                // line er variant stock row theke (form er value na), jate stock ar line mele
-                $details->ram_id         = $stock->ram_id;
-                $details->rom_id         = $stock->rom_id;
-                $details->color_id       = $stock->color_id;
-                $details->quantity       = $qty;
-                $details->purchase_price = $item['price'];
-                $details->unit_discount  = $lineDiscount;
-                $details->unit_total     = $lineTotal;
-                $details->save();
-
-                // Weighted average kena dam (paisa porjonto; age purno takay round hoye profit bhul hoto)
-                $currentQty = $stock->quantity;
-                $oldAvgPrice = (float) ($stock->average_purchase_price ?? 0);
-                $oldLastPrice = $stock->last_purchase_price;
-                $newPrice = (float) $item['price'];
-
-                $newAveragePrice = round((($currentQty * $oldAvgPrice) + ($qty * $newPrice)) / ($currentQty + $qty), 2);
-
-                $stock->last_purchase_price = $newPrice;
-                $stock->average_purchase_price = $newAveragePrice;
-
-                PriceHistory::record($product, $stock, PriceHistory::LAST_COST, $oldLastPrice, $newPrice, 'purchase', $purchase);
-                PriceHistory::record($product, $stock, PriceHistory::AVERAGE_COST, $oldAvgPrice, $newAveragePrice, 'purchase', $purchase);
-
-                // quantity + stock ledger entry (price er poriborton o ekshathe save hoy)
-                $this->stockService->move($stock, $qty, StockService::PURCHASE, $purchase, null, $branchId);
-
-                // IMEI save (variant ar branch shoho) + itihash
-                foreach ($devices as [$imei1, $imei2]) {
-                    $this->imeiService->register($product, $stock->id, $branchId, $imei1, $imei2, ImeiService::PURCHASE, $purchase,
-                        $product->isSecondHand() ? 'Bought as ' . $product->typeLabel() : null,
-                        (int) $purchase->supplier_id, $purchase->id);
-                }
-
-            }
-        }
-
-        // invoice er hishab server e (browser er total bishwas kora hoy na)
-        $subtotal = round($subtotal, 2);
-        $discount = round((float) ($request->discount ?? 0), 2);
-        if ($discount > $subtotal) {
-            throw new \Exception('Overall discount cannot be more than the subtotal.');
-        }
-        $grandTotal = round($subtotal - $discount, 2);
-        $paid = round((float) ($request->paid_amount ?? 0), 2);
-        if ($paid > $grandTotal) {
-            throw new \Exception('Paid amount (' . number_format($paid, 2) . ') cannot be more than the grand total (' . number_format($grandTotal, 2) . ').');
-        }
-
-        // paid/due supplier ledger theke (settle) bose: form er taka + supplier er kache thaka agrim
-        $purchase->subtotal       = $subtotal;
-        $purchase->discount       = $discount;
-        $purchase->grand_total    = $grandTotal;
-        $purchase->paid_amount    = 0;
-        $purchase->due_amount     = $grandTotal;
-        $purchase->payment_status = 'Due';
-        $purchase->save();
-
-        // Supplier ledger: bill (dena barlo), ar payment thakle
-        $this->accounts->recordPurchase($purchase, $paid);
-
+        $purchase = $this->purchases->save($request->all(), $action);
         DB::commit();
-        Toastr::success('Data Added Successfully', 'Success', [
-            "positionClass" => "toast-top-right"
-        ]);
-        return redirect()->route('purchase.index');
-
     } catch (\Exception $e) {
         DB::rollBack();
         return back()->with('error', errorMessage($e))->withInput();
     }
+
+    if (!$purchase->wasRecentlyCreated) {
+        return redirect()->route('purchase.show', $purchase->id)->with('success', "Invoice {$purchase->invoice_no} was already saved; nothing was added.");
+    }
+
+    Toastr::success("Invoice {$purchase->invoice_no} saved as {$purchase->statusLabel()}", 'Success', [
+        "positionClass" => "toast-top-right"
+    ]);
+    return redirect()->route($purchase->isApproved() ? 'purchase.index' : 'purchase.show', $purchase->isApproved() ? [] : $purchase->id);
 }
-
-// public function show($id)
-// {
-
-//     $purchase = Purchase::with(['supplier', 'purchaseDetails.product', 'purchaseDetails.ram', 'purchaseDetails.rom', 'purchaseDetails.color'])->findOrFail($id);
-    
-//     $name = "Purchase Details";
-//     $title = "Invoice #" . $purchase->invoice_no;
-
-//     return view('back-end.purchase.show', compact('purchase', 'name', 'title'));
-// }
 
 public function show($id)
 {
     $purchase = Purchase::with([
-        'supplier', 
-        'purchaseDetails.product', 
-        'purchaseDetails.ram', 
-        'purchaseDetails.rom', 
-        'purchaseDetails.color',
-        'product_imeis' // এই রিলেশনটি যুক্ত করুন
+        'supplier', 'creator:id,name', 'approver:id,name', 'canceller:id,name',
+        'purchaseDetails.product', 'purchaseDetails.ram', 'purchaseDetails.rom', 'purchaseDetails.color', 'purchaseDetails.devices',
+        'payments.creator:id,name', 'returns',
     ])->findOrFail($id);
-    
+
     $name = "Purchase Details";
     $title = "Invoice #" . $purchase->invoice_no;
+    $canApprove = PurchaseService::canApprove(request()->user());
 
-    return view('back-end.purchase.show', compact('purchase', 'name', 'title'));
+    return view('back-end.purchase.show', compact('purchase', 'name', 'title', 'canApprove'));
 }
 
-   public function delete($id)
+// Shudhu draft/pending (approved hole cancel kore notun)
+public function edit($id)
 {
+    $purchase = Purchase::with('purchaseDetails.product', 'purchaseDetails.mainStock')->findOrFail($id);
+    if (!$purchase->isOpen()) {
+        return redirect()->route('purchase.show', $id)->with('error', "Invoice {$purchase->invoice_no} is {$purchase->statusLabel()} and cannot be edited.");
+    }
+
+    return view('back-end.purchase.edit', $this->formData($purchase));
+}
+
+public function update(Request $request, $id)
+{
+    $purchase = Purchase::findOrFail($id);
+    $request->validate($this->rules());
+    $action = $this->action($request);
+
     DB::beginTransaction();
-
     try {
-        $purchase = Purchase::with('purchaseDetails')->findOrFail($id);
-
-        // ১. এই purchase এর IMEI গুলো বিক্রি/ফেরত/reserve/repair হয়ে গেলে ডিলিট করা যাবে না (shudhu available)
-        $usedImeis = ProductImei::where('purchase_id', $purchase->id)
-            ->where('status', '!=', ProductImei::STATUS_AVAILABLE)
-            ->lockForUpdate()
-            ->get()
-            ->map(fn ($i) => $i->imei_no . ' (' . $i->statusText() . ')');
-        if ($usedImeis->isNotEmpty()) {
-            throw new \Exception('Cannot delete! These IMEI from this purchase are no longer simply in stock: ' . $usedImeis->implode(', '));
-        }
-
-        // ২. স্টক অ্যাডজাস্টমেন্ট (Stock Reverse) + average purchase price আগের অবস্থায় ফেরানো
-        foreach ($purchase->purchaseDetails as $item) {
-            $stock = MainStock::where([
-                'product_id' => $item->product_id,
-                'ram_id'     => $item->ram_id,
-                'rom_id'     => $item->rom_id,
-                'color_id'   => $item->color_id,
-            ])->lockForUpdate()->first();
-
-            if ($stock) {
-                $remainingQty = $stock->quantity - $item->quantity;
-
-                // যদি স্টক মাইনাস হয়ে যায় (অর্থাৎ বিক্রি হয়ে গেছে)
-                if ($remainingQty < 0) {
-                     throw new \Exception("Cannot delete! Some products from this purchase are already sold.");
-                }
-
-                // (মোট মূল্য - এই purchase এর মূল্য) / বাকি পরিমাণ
-                if ($remainingQty > 0) {
-                    $oldAvg = $stock->average_purchase_price;
-                    $remainingValue = ($stock->quantity * $stock->average_purchase_price) - ($item->quantity * $item->purchase_price);
-                    $stock->average_purchase_price = max(0, round($remainingValue / $remainingQty, 2));
-                    PriceHistory::record($stock->product, $stock, PriceHistory::AVERAGE_COST, $oldAvg, $stock->average_purchase_price, 'purchase_deleted', $purchase);
-                }
-
-                $this->stockService->move($stock, -$item->quantity, StockService::PURCHASE_DELETED, $purchase, 'Purchase deleted');
-            }
-        }
-
-        // IMEI record muchhar age itihash e rakha
-        foreach (ProductImei::where('purchase_id', $purchase->id)->lockForUpdate()->get() as $imei) {
-            $this->imeiService->record($imei, ImeiService::PURCHASE_DELETED, $purchase, 'Purchase deleted');
-        }
-
-        // ৩. IMEI মোছা
-        ProductImei::where('purchase_id', $purchase->id)->delete();
-
-        // ৪-৫. সাপ্লায়ার লেজার: bill ar purchase form e deya taka jay, balance abar hishab.
-        // Pore deya payment thakle atkay (agey void korte hobe)
-        $this->accounts->removePurchase($purchase);
-
-        // ৬. পারচেজ এবং ডিটেইলস ডিলিট করা
-        $purchase->purchaseDetails()->delete(); // রিলেশনশিপ থাকলে এটি কাজ করবে
-        $purchase->delete();
-
+        $purchase = $this->purchases->save($request->except('payment_token'), $action, $purchase);
         DB::commit();
-         Toastr::success('Data Deleted Successfully', 'Success', [
-            "positionClass" => "toast-top-right"
-        ]);
-        return redirect()->route('purchase.index');
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->with('error', errorMessage($e))->withInput();
+    }
 
+    return redirect()->route('purchase.show', $purchase->id)->with('success', "Invoice {$purchase->invoice_no} saved as {$purchase->statusLabel()}.");
+}
+
+// Workflow: submit (draft -> pending), approve, cancel
+public function changeStatus(Request $request, $id)
+{
+    $request->validate([
+        'action' => 'required|in:submit,approve,cancel',
+        'reason' => 'required_if:action,cancel|nullable|string|max:255',
+    ]);
+    $purchase = Purchase::findOrFail($id);
+    $user = $request->user();
+
+    $allowed = match ($request->action) {
+        'submit'  => $user->canAny(['create purchase', 'update purchase']),
+        'approve' => PurchaseService::canApprove($user) && $user->canAccessBranch($purchase->branch_id),
+        'cancel'  => $user->can('delete purchase'),
+    };
+    abort_unless($allowed, 403);
+
+    DB::beginTransaction();
+    try {
+        $purchase = match ($request->action) {
+            'submit'  => $this->purchases->submit($purchase),
+            'approve' => $this->purchases->approve($purchase),
+            'cancel'  => $this->purchases->cancel($purchase, $request->reason),
+        };
+        DB::commit();
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return back()->with('error', errorMessage($e));
+    }
+
+    return back()->with('success', "Invoice {$purchase->invoice_no} is now {$purchase->statusLabel()}.");
+}
+
+// Kokhono approve na howa invoice muche; approved hole cancel (stock, IMEI, ledger ulto, record thake)
+public function delete(Request $request, $id)
+{
+    $purchase = Purchase::findOrFail($id);
+
+    DB::beginTransaction();
+    try {
+        $deleted = $this->purchases->delete($purchase, $request->input('reason') ?: 'Deleted from the purchase list');
+        DB::commit();
     } catch (\Exception $e) {
         DB::rollBack();
         return redirect()->back()->with('error', errorMessage($e));
     }
+
+    Toastr::success($deleted ? 'Data Deleted Successfully' : "Invoice {$purchase->invoice_no} cancelled; stock and ledger reversed", 'Success', [
+        "positionClass" => "toast-top-right"
+    ]);
+    return redirect()->route('purchase.index');
+}
+
+// Form e IMEI jachai (save er age): format, sonkhya, duplicate, stock e/onno invoice e ache kina
+public function checkImeis(Request $request)
+{
+    $request->validate([
+        'product_id'  => 'required|exists:products,id',
+        'qty'         => 'required|integer|min:0',
+        'imeis'       => 'nullable|string|max:100000',
+        'purchase_id' => 'nullable|integer',
+    ]);
+
+    $errors = DB::transaction(fn () => $this->purchases->checkImeis(
+        Product::findOrFail($request->product_id), (int) $request->qty, (string) $request->imeis, $request->integer('purchase_id') ?: null));
+
+    return response()->json([
+        'ok'     => !$errors,
+        'count'  => count(ProductImei::parseDevices($request->imeis)),
+        'errors' => $errors,
+    ]);
 }
 
 public function updatePayment(Request $request)
@@ -347,7 +225,7 @@ public function updatePayment(Request $request)
     try {
         $purchase = Purchase::with('supplier')->findOrFail($request->purchase_id);
 
-        // due er beshi na, ekoi form duibar na, ekoi reference duibar na (SupplierAccountService)
+        // shudhu approved invoice; due er beshi na, ekoi form duibar na, ekoi reference duibar na (SupplierAccountService)
         $payment = $this->accounts->pay($purchase->supplier, [
             'amount'          => $request->paid_amount,
             'payment_date'    => $request->payment_date,
@@ -370,9 +248,66 @@ public function updatePayment(Request $request)
 }
 
 public function printInvoice($id) {
-    $purchase = Purchase::with(['supplier', 'purchaseDetails.product','product_imeis','purchaseDetails.ram','purchaseDetails.rom','purchaseDetails.color'])->findOrFail($id);
+    $purchase = Purchase::with(['supplier', 'purchaseDetails.product', 'purchaseDetails.devices', 'purchaseDetails.ram', 'purchaseDetails.rom',
+        'purchaseDetails.color', 'payments'])->findOrFail($id);
     return view('back-end.purchase.print', compact('purchase'));
 }
 
+private function rules(): array
+{
+    return [
+        'supplier_id'          => 'required|exists:suppliers,id',
+        'purchase_date'        => 'required|date',
+        'supplier_invoice_no'  => 'nullable|string|max:100',
+        'items'                => 'required|array|min:1',
+        'items.*.product_id'    => 'required|exists:products,id',
+        'items.*.main_stock_id' => 'nullable|integer',
+        'items.*.ram_id'        => 'nullable|integer|exists:rams,id',
+        'items.*.rom_id'        => 'nullable|integer|exists:roms,id',
+        'items.*.color_id'      => 'nullable|integer|exists:colors,id',
+        'items.*.qty'           => 'required|integer|min:1',
+        'items.*.price'         => 'required|numeric|min:0',
+        'items.*.unit_discount' => 'nullable|numeric|min:0',
+        'items.*.imeis'         => 'nullable|string',
+        'discount'             => 'nullable|numeric|min:0',
+        'tax_rate'             => 'nullable|numeric|min:0|max:100',
+        'additional_cost'      => 'nullable|numeric|min:0',
+        'additional_cost_note' => 'nullable|string|max:255',
+        'paid_amount'          => 'nullable|numeric|min:0',
+        'payment_method'       => 'nullable|string|max:50',
+        'payment_account'      => 'nullable|string|max:255',
+        'grand_total'          => 'nullable|numeric', // purono form; server abar hishab kore
+        'expected_total'       => 'nullable|numeric',
+        'payment_token'        => 'nullable|string|max:64',
+        'note'                 => 'nullable|string|max:2000',
+        'action'               => 'nullable|in:draft,submit,approve',
+    ];
+}
+
+// Button: draft / submit / approve; na dile (purono form) approve korte parle approve, na hole approval e
+private function action(Request $request): string
+{
+    $canApprove = PurchaseService::canApprove($request->user());
+    $action = $request->action ?: ($canApprove ? PurchaseService::ACTION_APPROVE : PurchaseService::ACTION_SUBMIT);
+    abort_if($action === PurchaseService::ACTION_APPROVE && !$canApprove, 403, 'You are not allowed to approve purchases.');
+
+    return $action;
+}
+
+private function formData(?Purchase $purchase): array
+{
+    return [
+        'name'                => $this->heading,
+        'title'               => $this->heading,
+        'purchase'            => $purchase,
+        // inactive supplier theke kena jay na (edit e ager supplier dekhay)
+        'suppliers'           => Supplier::where(fn ($q) => $q->active()->when($purchase, fn ($w) => $w->orWhere('id', $purchase->supplier_id)))->latest()->get(),
+        'products'            => Product::where('status', 1)->latest()->get(), // inactive product kena jay na
+        'next_invoice_number' => $purchase?->invoice_no ?? $this->invoiceNumbers->previewPurchase(), // shudhu dekhanor jonno
+        'token'               => (string) Str::uuid(),
+        'canApprove'          => PurchaseService::canApprove(request()->user()),
+        'methods'             => SupplierPaymentController::METHODS,
+    ];
+}
 
 }

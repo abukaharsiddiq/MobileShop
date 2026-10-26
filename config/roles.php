@@ -29,7 +29,7 @@ return [
             'create rom', 'read rom', 'update rom',
             'create color', 'read color', 'update color',
             'create supplier', 'read supplier', 'update supplier', 'create supplier payment',
-            'create purchase', 'read purchase', 'update purchase',
+            'create purchase', 'read purchase', 'update purchase', 'approve purchase',
             'create purchase return', 'read purchase return',
             'create customer', 'read customer', 'update customer',
             'create sale', 'read sale', 'update sale',

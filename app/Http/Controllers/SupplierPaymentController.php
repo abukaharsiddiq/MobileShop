@@ -26,7 +26,7 @@ class SupplierPaymentController extends Controller
         $name = 'Supplier';
         $title = 'Supplier Payment - ' . $supplier->name;
         $summary = $this->accounts->summary($supplier);
-        $openInvoices = Purchase::where('supplier_id', $id)->where('due_amount', '>', 0)->orderBy('purchase_date')->orderBy('id')->get();
+        $openInvoices = Purchase::approved()->where('supplier_id', $id)->where('due_amount', '>', 0)->orderBy('purchase_date')->orderBy('id')->get();
         $methods = self::METHODS;
         $token = (string) Str::uuid(); // ekoi form duibar submit hole ekbar e hishab
         $selectedPurchase = $request->integer('purchase_id') ?: null;
