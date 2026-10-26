@@ -346,3 +346,42 @@ Artisan::command('customers:reconcile {--apply : Fix running balances (otherwise
 
     return $issues ? 1 : 0;
 })->purpose('Check customer ledgers against sales (dry-run by default; never changes amounts)');
+
+// Config (INSTALLMENT_LATE_FEE_*) onujayi late fee. Default dry-run; --apply dile bosay. Ekta kisti te ekbar-i.
+Artisan::command('installments:apply-late-fees {--apply : Add the fees (otherwise dry-run)}', function (App\Services\InstallmentService $installments) {
+    $rule = config('installments.late_fee');
+    if ($rule['type'] === 'none') {
+        $this->info('Late fee is off (INSTALLMENT_LATE_FEE_TYPE=none). Nothing to do.');
+        return 0;
+    }
+
+    if (!$this->option('apply')) {
+        $total = 0;
+        foreach ($installments->lateFeeCandidates() as $i) {
+            $fee = App\Services\InstallmentService::lateFeeFor($i);
+            $total += $fee;
+            $this->line("    {$i->sale->invoice_no} #{$i->installment_no} due {$i->due_date}: fee " . number_format($fee, 2));
+        }
+        $this->warn('Dry-run: would add ' . number_format($total, 2) . '. Run again with --apply.');
+        return 0;
+    }
+
+    $applied = Illuminate\Support\Facades\DB::transaction(fn () => $installments->assessLateFees());
+    $this->info(count($applied) . ' late fee(s) added, total ' . number_format(array_sum(array_column($applied, 'fee')), 2) . '.');
+})->purpose('Add configured late fees to overdue installments (dry-run by default)');
+
+// Read-only: kistir schedule, payment bhag ar invoice due ki mele
+Artisan::command('installments:verify {--sale= : Only this sale id}', function (App\Services\InstallmentService $installments) {
+    $issues = 0;
+    App\Models\Sale::whereHas('installments')->when($this->option('sale'), fn ($q, $id) => $q->whereKey($id))
+        ->orderBy('id')->each(function ($sale) use ($installments, &$issues) {
+            foreach ($installments->verify($sale) as $issue) {
+                $this->warn('    ' . $issue);
+                $issues++;
+            }
+        });
+
+    $issues ? $this->warn("{$issues} mismatch(es) need manual review. Nothing was changed.") : $this->info('All installment schedules match their payments.');
+
+    return $issues ? 1 : 0;
+})->purpose('Check installment schedules against payments and invoice dues (read-only)');

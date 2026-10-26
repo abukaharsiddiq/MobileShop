@@ -164,7 +164,8 @@ public function store(Request $request)
         'is_installment'        => 'nullable|in:0,1',
         'total_installments'    => 'required_if:is_installment,1|nullable|integer|min:1|max:60',
         'next_installment_date' => 'nullable|date',
-        'note'           => 'nullable|string|max:2000',
+        'installment_frequency' => 'nullable|in:' . implode(',', array_keys(config('installments.frequencies'))),
+        'note'         => 'nullable|string|max:2000',
     ]);
 
     try {

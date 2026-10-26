@@ -2,7 +2,8 @@
 @php
     $links = $links ?? true;
     $label = fn ($b) => $b > 0 ? 'Due' : ($b < 0 ? 'Advance' : '');
-    $badge = ['Opening Balance' => 'badge-dark', 'Sale' => 'badge-info', 'Sale Cancelled' => 'badge-secondary', 'Received' => 'badge-success', 'Return' => 'badge-warning', 'Refund Paid' => 'badge-danger'];
+    $badge = ['Opening Balance' => 'badge-dark', 'Sale' => 'badge-info', 'Sale Cancelled' => 'badge-secondary', 'Received' => 'badge-success', 'Return' => 'badge-warning', 'Refund Paid' => 'badge-danger',
+        'Installment Payment' => 'badge-success', 'Late Fee' => 'badge-danger', 'Late Fee Waived' => 'badge-secondary', 'Settlement Discount' => 'badge-secondary'];
 @endphp
 <table class="table table-bordered table-striped table-sm">
     <thead>

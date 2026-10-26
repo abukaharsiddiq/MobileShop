@@ -25,6 +25,7 @@
             <h5 class="mb-0">{{ $customer->name }} ({{ $customer->phone }}) Ledger</h5>
             <span>
                 Sales {{ number_format($statement['sales'], 2) }} ·
+                @if($statement['charges'] != 0) Late fees/discounts {{ number_format($statement['charges'], 2) }} · @endif
                 Paid {{ number_format($statement['paid'], 2) }} ·
                 Returns {{ number_format($statement['returns'], 2) }} ·
                 Refunded {{ number_format($statement['refunds'], 2) }}

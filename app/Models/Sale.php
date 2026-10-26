@@ -31,6 +31,7 @@ class Sale extends Model
         'is_installment',
         'total_installments',
         'installment_per_month',
+        'installment_frequency',
         'total_paid_installments',
         'note',
         'created_by',
@@ -78,6 +79,11 @@ class Sale extends Model
     public function payments()
     {
         return $this->hasMany(SalePayment::class);
+    }
+
+    public function installments()
+    {
+        return $this->hasMany(Installment::class);
     }
 
 public function saleDetails()

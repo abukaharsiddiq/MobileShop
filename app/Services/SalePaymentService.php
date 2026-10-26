@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Installment;
+use App\Models\InstallmentPayment;
 use App\Models\Sale;
 use App\Models\SalePayment;
 use Carbon\Carbon;
@@ -18,18 +19,22 @@ class SalePaymentService
 
     /**
      * Kisti r schedule: protiti kisti purno takay (ceil), shesh kisti te baki ta, jate jogfol = due.
+     * Frequency config('installments.frequencies') theke (weekly / biweekly / monthly).
      */
-    public function createSchedule(Sale $sale, int $months, Carbon $firstDueDate): void
+    public function createSchedule(Sale $sale, int $count, Carbon $firstDueDate, string $frequency = 'monthly'): void
     {
+        if (!isset(config('installments.frequencies')[$frequency])) {
+            throw new \Exception("Unknown installment frequency: {$frequency}.");
+        }
         $due = round((float) $sale->due_amount, 2);
 
-        $base = ceil($due / $months);
-        if ($base * ($months - 1) >= $due) {
-            $base = round($due / $months, 2);
+        $base = ceil($due / $count);
+        if ($base * ($count - 1) >= $due) {
+            $base = round($due / $count, 2);
         }
 
-        for ($i = 1; $i <= $months; $i++) {
-            $amount = $i < $months ? $base : round($due - $base * ($months - 1), 2);
+        for ($i = 1; $i <= $count; $i++) {
+            $amount = $i < $count ? $base : round($due - $base * ($count - 1), 2);
 
             Installment::create([
                 'sale_id'        => $sale->id,
@@ -37,17 +42,26 @@ class SalePaymentService
                 'installment_no' => $i,
                 'amount'         => $amount,
                 'paid_amount'    => 0,
-                'due_date'       => $firstDueDate->copy()->addMonths($i - 1),
-                'status'         => 'pending',
+                'due_date'       => self::dueDate($firstDueDate, $i - 1, $frequency),
+                'status'         => Installment::STATUS_PENDING,
             ]);
         }
 
         $sale->update([
             'is_installment'          => 1,
-            'total_installments'      => $months,
+            'total_installments'      => $count,
             'installment_per_month'   => $base,
+            'installment_frequency'   => $frequency,
             'total_paid_installments' => 0,
         ]);
+    }
+
+    // prothom kistir tarikh theke $steps ta frequency por
+    public static function dueDate(Carbon $first, int $steps, string $frequency): Carbon
+    {
+        $rule = config('installments.frequencies')[$frequency];
+
+        return isset($rule['months']) ? $first->copy()->addMonthsNoOverflow($rule['months'] * $steps) : $first->copy()->addDays($rule['days'] * $steps);
     }
 
     /**
@@ -55,9 +69,29 @@ class SalePaymentService
      * kisti te jay (aagam deya jay); na dile purono kisti theke.
      */
     public function receive(Sale $sale, float $amount, string $date, ?string $method = null, ?string $note = null,
-                            string $type = 'Received', ?int $startInstallmentId = null, ?string $reference = null, ?string $account = null): Sale
+                            string $type = 'Received', ?int $startInstallmentId = null, ?string $reference = null, ?string $account = null,
+                            ?string $requestToken = null): Sale
+    {
+        return $this->record($sale, $amount, $date, $method, $note, $type, $startInstallmentId, $reference, $account, $requestToken)->sale;
+    }
+
+    /**
+     * receive() er moto, kintu toiri hoya SalePayment fere (kisti te bhag shoho). Ekoi $requestToken
+     * (form er token) e duibar dile notun kichu hoy na - ager payment ta fere (wasRecentlyCreated = false).
+     */
+    public function record(Sale $sale, float $amount, string $date, ?string $method = null, ?string $note = null,
+                           string $type = 'Received', ?int $startInstallmentId = null, ?string $reference = null, ?string $account = null,
+                           ?string $requestToken = null): SalePayment
     {
         $sale = Sale::lockForUpdate()->findOrFail($sale->id);
+        if ($requestToken && ($done = SalePayment::where('request_token', $requestToken)->first())) {
+            if ((int) $done->sale_id !== (int) $sale->id) {
+                throw new \Exception('This form was already used for another payment. Please reload the page.');
+            }
+
+            return $done->setRelation('sale', $sale);
+        }
+
         $amount = round($amount, 2);
         $due = round((float) $sale->due_amount, 2);
         $method = $method ?: 'Cash';
@@ -80,8 +114,6 @@ class SalePaymentService
         $sale->due_amount = round($due - $amount, 2);
         $sale->save();
 
-        $this->allocateToInstallments($sale, $amount, $date, $method, $startInstallmentId);
-
         $entry = $this->ledger->customerEntry([
             'customer_id'      => $sale->customer_id,
             'date'             => $date,
@@ -94,7 +126,7 @@ class SalePaymentService
         ]);
 
         // method/reference shoho bhag (report e cash/bank/mobile alada)
-        SalePayment::create([
+        $payment = SalePayment::create([
             'sale_id'            => $sale->id,
             'customer_id'        => $sale->customer_id,
             'type'               => SalePayment::TYPE_DUE,
@@ -107,9 +139,12 @@ class SalePaymentService
             'received_by'        => auth()->id(),
             'customer_ledger_id' => $entry->id,
             'note'               => $note,
+            'request_token'      => $requestToken,
         ]);
 
-        return $sale;
+        $this->allocateToInstallments($sale, $amount, $date, $method, $startInstallmentId, $payment);
+
+        return $payment->setRelation('sale', $sale);
     }
 
     /**
@@ -154,16 +189,18 @@ class SalePaymentService
     }
 
     /**
-     * Return er por due komle baki kisti gulo shesh theke kome jay, jate kistir jogfol = due.
+     * Return / discount er por due komle baki kisti gulo shesh theke kome jay, jate kistir jogfol = due.
+     * Kichui na thaka kisti "cancelled" hoy (muche na - itihash thake).
      */
-    public function syncScheduleToDue(Sale $sale): void
+    public function syncScheduleToDue(Sale $sale, string $reason = 'Reduced to match invoice due.'): void
     {
-        $installments = Installment::where('sale_id', $sale->id)->lockForUpdate()->orderByDesc('installment_no')->get();
+        $installments = Installment::where('sale_id', $sale->id)->where('status', '!=', Installment::STATUS_CANCELLED)
+            ->lockForUpdate()->orderByDesc('installment_no')->get();
         if ($installments->isEmpty()) {
             return;
         }
 
-        $outstanding = $installments->sum(fn ($i) => $i->amount - $i->paid_amount);
+        $outstanding = $installments->sum(fn ($i) => $i->openAmount());
         $excess = round($outstanding - (float) $sale->due_amount, 2);
 
         foreach ($installments as $installment) {
@@ -171,8 +208,7 @@ class SalePaymentService
                 break;
             }
 
-            $open = round($installment->amount - $installment->paid_amount, 2);
-            $cut = min($excess, $open);
+            $cut = min($excess, $installment->openAmount(), (float) $installment->amount);
             if ($cut <= 0) {
                 continue;
             }
@@ -180,12 +216,12 @@ class SalePaymentService
             $excess = round($excess - $cut, 2);
             $installment->amount = round($installment->amount - $cut, 2);
 
-            if ($installment->amount <= 0) {
-                $installment->delete();
-                continue;
-            }
-            if ($installment->amount <= $installment->paid_amount) {
-                $installment->status = 'paid';
+            if ($installment->totalDue() <= 0) {
+                $installment->status = Installment::STATUS_CANCELLED;
+                $installment->cancelled_at = now();
+                $installment->note = trim($installment->note . ' ' . $reason);
+            } elseif ($installment->paid_amount >= $installment->totalDue()) {
+                $installment->status = Installment::STATUS_PAID;
             }
             $installment->save();
         }
@@ -193,10 +229,22 @@ class SalePaymentService
         $this->refreshInstallmentCounters($sale);
     }
 
-    private function allocateToInstallments(Sale $sale, float $amount, string $date, ?string $method, ?int $startInstallmentId): void
+    // sale batil: baki kisti gulo cancelled (paid gulo itihash hisebe thake)
+    public function cancelSchedule(Sale $sale, string $reason): void
+    {
+        foreach (Installment::where('sale_id', $sale->id)->open()->lockForUpdate()->get() as $installment) {
+            $installment->update([
+                'status'       => Installment::STATUS_CANCELLED,
+                'cancelled_at' => now(),
+                'note'         => trim($installment->note . ' Sale cancelled: ' . $reason),
+            ]);
+        }
+    }
+
+    private function allocateToInstallments(Sale $sale, float $amount, string $date, ?string $method, ?int $startInstallmentId, SalePayment $payment): void
     {
         $installments = Installment::where('sale_id', $sale->id)
-            ->where('status', '!=', 'paid')
+            ->open()
             ->lockForUpdate()
             ->orderByRaw('id = ? DESC', [(int) $startInstallmentId])
             ->orderBy('installment_no')
@@ -207,30 +255,35 @@ class SalePaymentService
                 break;
             }
 
-            $open = round($installment->amount - $installment->paid_amount, 2);
-            $pay = min($amount, $open);
+            $pay = min($amount, $installment->openAmount());
+            if ($pay <= 0) {
+                continue;
+            }
             $amount = round($amount - $pay, 2);
 
+            // ansik hole partial - purota na dile kisti paid hoy na
             $installment->paid_amount = round($installment->paid_amount + $pay, 2);
-            $installment->status = $installment->paid_amount >= $installment->amount ? 'paid' : 'partial';
+            $installment->status = $installment->paid_amount >= $installment->totalDue() ? Installment::STATUS_PAID : Installment::STATUS_PARTIAL;
             $installment->payment_date = $date;
             $installment->payment_method = $method;
             $installment->received_by = auth()->id();
             $installment->save();
+
+            InstallmentPayment::create(['installment_id' => $installment->id, 'sale_payment_id' => $payment->id, 'amount' => $pay]);
         }
 
         $this->refreshInstallmentCounters($sale);
     }
 
-    private function refreshInstallmentCounters(Sale $sale): void
+    public function refreshInstallmentCounters(Sale $sale): void
     {
         if (!Installment::where('sale_id', $sale->id)->exists()) {
             return;
         }
 
         $sale->update([
-            'total_installments'      => Installment::where('sale_id', $sale->id)->count(),
-            'total_paid_installments' => Installment::where('sale_id', $sale->id)->where('status', 'paid')->count(),
+            'total_installments'      => Installment::where('sale_id', $sale->id)->where('status', '!=', Installment::STATUS_CANCELLED)->count(),
+            'total_paid_installments' => Installment::where('sale_id', $sale->id)->where('status', Installment::STATUS_PAID)->count(),
         ]);
     }
 }
