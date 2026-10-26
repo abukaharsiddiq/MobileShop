@@ -37,6 +37,7 @@ class PurchaseService
         private InvoiceNumberService $numbers,
         private VariantService $variants,
         private SupplierAccountService $accounts,
+        private FinancePostingService $finance,
     ) {}
 
     // config('inventory.purchase_requires_approval') false hole purchase banate parle approve o (ager moto)
@@ -215,6 +216,9 @@ class PurchaseService
             'due_amount'  => $purchase->grand_total,
         ]);
 
+        // journal: Dr Inventory (landed cost), Cr Payable
+        $this->finance->postPurchase($purchase);
+
         // bill + form e deya taka (supplier er agrim thakle settle e bose)
         $this->accounts->recordPurchase($purchase, (float) $purchase->initial_payment);
 
@@ -248,6 +252,7 @@ class PurchaseService
 
         if ($from === Purchase::STATUS_APPROVED) {
             $this->accounts->cancelPurchase($purchase, $reason);
+            $this->finance->cancelPurchase($purchase, $reason);   // bill er journal ulta (muchhe na)
             // ledger theke bad, tai ar keu dhare na
             $purchase->update(['paid_amount' => 0, 'return_amount' => 0, 'due_amount' => 0, 'payment_status' => 'Cancelled']);
         }

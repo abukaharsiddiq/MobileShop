@@ -99,6 +99,7 @@ public function updatePayment(Request $request)
         'payment_date'   => 'required|date',
         'payment_method' => 'nullable|string|max:30',
         'reference'      => 'nullable|string|max:100',
+        'request_token'  => 'nullable|string|max:64',
     ]);
 
     try {
@@ -106,7 +107,8 @@ public function updatePayment(Request $request)
 
         // due er beshi neya jay na; kisti thakle kisti te bhag hoy; ledger e entry; ekoi reference duibar na
         $this->payments->receive(Sale::findOrFail($request->sale_id), (float) $request->paid_amount,
-            $request->payment_date, $request->payment_method, $request->note, 'Received', null, $request->reference);
+            $request->payment_date, $request->payment_method, $request->note, 'Received', null, $request->reference,
+            null, $request->request_token);   // ekoi form duibar submit hole ekbar-i
 
         DB::commit();
         Toastr::success('Payment updated successfully!');

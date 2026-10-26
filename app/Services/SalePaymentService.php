@@ -15,7 +15,7 @@ use Carbon\Carbon;
  */
 class SalePaymentService
 {
-    public function __construct(private LedgerService $ledger) {}
+    public function __construct(private LedgerService $ledger, private FinancePostingService $finance) {}
 
     /**
      * Kisti r schedule: protiti kisti purno takay (ceil), shesh kisti te baki ta, jate jogfol = due.
@@ -141,10 +141,86 @@ class SalePaymentService
             'note'               => $note,
             'request_token'      => $requestToken,
         ]);
+        // journal: Dr Cash/Bank/Mobile, Cr Receivable
+        $this->finance->postSalePayment($payment);
 
         $this->allocateToInstallments($sale, $amount, $date, $method, $startInstallmentId, $payment);
 
         return $payment->setRelation('sale', $sale);
+    }
+
+    /**
+     * Bhul due/kisti receipt batil: invoice er due ferot, je kisti te bosechhilo sekhan theke sore (installment_payments
+     * theke hubohu), customer ledger e "Payment Reversed" debit ar journal ulta. Receipt record thake (muchhe na).
+     */
+    public function reverseReceipt(SalePayment $payment, string $reason): SalePayment
+    {
+        $payment = SalePayment::lockForUpdate()->findOrFail($payment->id);
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw new \Exception('A reason is required to reverse a receipt.');
+        }
+        if ($payment->reversed_at) {
+            throw new \Exception("Receipt #{$payment->id} is already reversed.");
+        }
+        if (!$payment->isReversible()) {
+            throw new \Exception('Only due and installment receipts can be reversed. For money taken at the sale, cancel the sale or use Sales Return.');
+        }
+
+        $sale = Sale::lockForUpdate()->findOrFail($payment->sale_id);
+        $amount = round((float) $payment->amount, 2);
+        if ($sale->isCancelled()) {
+            throw new \Exception("Invoice {$sale->invoice_no} is cancelled.");
+        }
+        if ($amount > round((float) $sale->paid_amount, 2)) {
+            throw new \Exception("Invoice {$sale->invoice_no} shows only " . number_format($sale->paid_amount, 2) . ' paid.');
+        }
+
+        $allocations = InstallmentPayment::where('sale_payment_id', $payment->id)->get();
+        $installments = Installment::whereIn('id', $allocations->pluck('installment_id'))->lockForUpdate()->get()->keyBy('id');
+        if ($installments->contains(fn ($i) => $i->status === Installment::STATUS_CANCELLED)) {
+            throw new \Exception('Part of this receipt sits on a cancelled installment; it cannot be reversed automatically.');
+        }
+
+        $sale->paid_amount = round($sale->paid_amount - $amount, 2);
+        $sale->due_amount = round($sale->due_amount + $amount, 2);
+        $sale->save();
+
+        foreach ($allocations as $allocation) {
+            $installment = $installments[$allocation->installment_id];
+            $installment->paid_amount = round($installment->paid_amount - $allocation->amount, 2);
+            $installment->status = match (true) {
+                $installment->paid_amount >= $installment->totalDue() => Installment::STATUS_PAID,
+                $installment->paid_amount > 0                         => Installment::STATUS_PARTIAL,
+                default                                               => Installment::STATUS_PENDING,
+            };
+            if ($installment->paid_amount <= 0) {
+                $installment->payment_date = null;
+            }
+            $installment->save();
+            // bhag er record shudhu ei receipt er; receipt, ledger ar journal e itihash thake
+            $allocation->delete();
+        }
+        $this->refreshInstallmentCounters($sale);
+
+        $this->ledger->customerEntry([
+            'customer_id'      => $sale->customer_id,
+            'date'             => now()->toDateString(),
+            'transaction_type' => 'Payment Reversed',
+            'sale_id'          => $sale->id,
+            'reference_no'     => $sale->invoice_no,
+            'debit'            => $amount,
+            'note'             => "Receipt #{$payment->id} ({$payment->method}) reversed: {$reason}",
+        ]);
+        $payment->update(['reversed_at' => now(), 'reversed_by' => auth()->id(), 'reverse_reason' => $reason]);
+        $this->finance->reverseSalePayment($payment, $reason);
+
+        AuditLogger::log('sale_payment.reversed', $payment, null, [
+            'amount' => $amount, 'invoice' => $sale->invoice_no, 'reason' => $reason,
+            'installments' => $allocations->pluck('amount', 'installment_id'),
+        ]);
+
+        return $payment;
     }
 
     /**
@@ -178,8 +254,9 @@ class SalePaymentService
             throw new \Exception("{$method} payment needs a transaction / cheque reference.");
         }
         if ($reference !== '') {
+            // batil kora receipt er reference abar sothik invoice e deya jay
             $used = SalePayment::with('sale:id,invoice_no')->where('method', $method)->where('reference', $reference)
-                ->where('type', '!=', SalePayment::TYPE_REFUND)->first();
+                ->where('type', '!=', SalePayment::TYPE_REFUND)->whereNull('reversed_at')->first();
             if ($used) {
                 throw new \Exception("Duplicate payment: {$method} reference {$reference} is already used on invoice " . ($used->sale->invoice_no ?? '#' . $used->sale_id) . '.');
             }

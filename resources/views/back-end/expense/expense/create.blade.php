@@ -8,8 +8,10 @@
                     <h5 class="m-0">Add New Expense</h5>
                 </div>
                 <div class="card-body">
-                    <form action="{{ route('expense.store') }}" method="POST">
+                    <form action="{{ route('expense.store') }}" method="POST" onsubmit="this.querySelector('button[type=submit]').disabled = true">
                         @csrf
+                        {{-- ekoi form duibar submit hole ekbar-i save --}}
+                        <input type="hidden" name="request_token" value="{{ old('request_token', (string) \Illuminate\Support\Str::uuid()) }}">
                         <div class="row">
                             <div class="col-md-6 form-group">
                                 <label>Category <span class="text-danger">*</span></label>
@@ -29,14 +31,13 @@
                                 <input type="number" name="amount" class="form-control" placeholder="0.00" step="0.01" required>
                             </div>
                             <div class="col-md-6 form-group">
-                                <label>Payment Method</label>
-                                <select name="payment_method" class="form-control">
-                                    <option value="Cash">Cash</option>
-                                    <option value="Bkash">Bkash</option>
-                                    <option value="Nagad">Nagad</option>
-                                    <option value="Bank">Bank</option>
-                                   
+                                <label>Paid From</label>
+                                <select name="account_id" class="form-control">
+                                    @foreach($accounts as $account)
+                                        <option value="{{ $account->id }}" @selected((int) old('account_id', 0) === $account->id)>{{ $account->name }}</option>
+                                    @endforeach
                                 </select>
+                                <small class="text-muted">Cash, bank or mobile banking account the money left from.</small>
                             </div>
                             <div class="col-md-12 form-group">
                                 <label>Note (Optional)</label>

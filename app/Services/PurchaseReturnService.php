@@ -27,6 +27,7 @@ class PurchaseReturnService
         private ImeiService $imeis,
         private StockService $stock,
         private SupplierAccountService $accounts,
+        private FinancePostingService $finance,
     ) {}
 
     /**
@@ -70,6 +71,7 @@ class PurchaseReturnService
         }
 
         $total = 0;
+        $inventoryValue = 0;   // stock er dam koto komlo (journal er Inventory credit)
         $stockIds = (array) ($input['stock_ids'] ?? []);
         if (!$stockIds) {
             throw new \Exception('Add at least one product to return.');
@@ -123,6 +125,8 @@ class PurchaseReturnService
 
             // baki stock er average: (mot dam - ferot er dam) / baki qty; ferot er dam average theke alada hole
             $remaining = $stock->quantity - $qty;
+            // baki thakle average bodle baki stock er dam = ager dam - ferot dam; shob gele puro stock er dam
+            $inventoryValue += $remaining > 0 ? $lineTotal : $qty * (float) $stock->average_purchase_price;
             if ($remaining > 0) {
                 $oldAvg = (float) $stock->average_purchase_price;
                 $stock->average_purchase_price = max(0, round(($stock->quantity * $oldAvg - $qty * $price) / $remaining, 2));
@@ -143,6 +147,8 @@ class PurchaseReturnService
 
         // supplier ledger: dena kome; payable er beshi hole agrim
         $this->accounts->recordReturn($return);
+        // journal: Dr Payable, Cr Inventory (+/- dam er parthokko)
+        $this->finance->postPurchaseReturn($return, $inventoryValue);
 
         // supplier sathe sathe taka ferot dile (shudhu agrim theke)
         $refund = round((float) ($input['refund_amount'] ?? 0), 2);

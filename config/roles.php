@@ -40,6 +40,7 @@ return [
             'read stock report', 'read sales report', 'read supplier report', 'read customer report', 'read expense report',
             'read stock adjustment', 'create stock adjustment', 'approve stock adjustment',
             'search imei', 'manage imei', 'sell below cost', 'cancel sale',
+            'read accounts', 'create income', 'read finance report',
         ],
     ],
 
@@ -66,6 +67,8 @@ return [
             'create expense category', 'read expense category', 'update expense category',
             'create expense', 'read expense', 'update expense',
             'read stock report', 'read sales report', 'read supplier report', 'read customer report', 'read expense report',
+            'read accounts', 'manage accounts', 'create income', 'create transfer', 'create journal',
+            'reverse transaction', 'reconcile account', 'read finance report',
         ],
     ],
 

@@ -36,6 +36,7 @@ class SaleReturnService
         private LedgerService $ledger,
         private SalePaymentService $payments,
         private SaleService $sales,
+        private FinancePostingService $finance,
     ) {}
 
     public static function canApprove(User $user): bool
@@ -181,6 +182,7 @@ class SaleReturnService
 
         $totalRefund = 0;
         $subtotalReduction = 0;
+        $returnCost = 0;
         foreach ($items->groupBy('sale_detail_id') as $detailId => $lineItems) {
             $detail = $details->get($detailId);
             $k = (int) $lineItems->sum('quantity');
@@ -193,6 +195,7 @@ class SaleReturnService
             $refund = round($lineReduction * $factor, 2);
             $totalRefund += $refund;
             $subtotalReduction += $lineReduction;
+            $returnCost += $k * (float) $detail->purchase_price;   // bikrir somoyer kena dam (COGS ferot)
 
             // line er refund protita item e bhag (shesh ta te rounding er baki)
             $perUnit = round($refund / $k, 2);
@@ -216,6 +219,7 @@ class SaleReturnService
         // invoice er hishab: discount ar tax line er anupate kome; additional charge (service) ferot hoy na
         $totalRefund = round($totalRefund, 2);
         $share = $lineSum > 0 ? $subtotalReduction / $lineSum : 0;
+        $taxBefore = round((float) $sale->tax_amount, 2);
         $dueBefore = round((float) $sale->due_amount, 2);
         $dueAdjusted = min($totalRefund, $dueBefore);
         $remainder = round($totalRefund - $dueAdjusted, 2);
@@ -249,6 +253,8 @@ class SaleReturnService
             'approved_by'  => $user->id,
             'approved_at'  => now(),
         ]);
+        // journal: Dr Sales Returns + Tax Payable (tax er bhag), Cr Receivable; Dr Inventory, Cr COGS
+        $this->finance->postSaleReturn($return->setRelation('sale', $sale), round($taxBefore - (float) $sale->tax_amount, 2), $returnCost);
 
         $exchangeSale = null;
         if ($exchange) {
@@ -287,12 +293,12 @@ class SaleReturnService
                 'debit'            => $cashRefund,
                 'note'             => "Refund for {$return->return_no} ({$method})",
             ]);
-            SalePayment::create([
+            $this->finance->postSalePayment(SalePayment::create([
                 'sale_id' => $sale->id, 'customer_id' => $sale->customer_id, 'type' => SalePayment::TYPE_REFUND,
                 'method' => $method, 'channel' => $channel, 'amount' => $cashRefund, 'reference' => $return->refund_reference,
                 'payment_date' => now()->toDateString(), 'received_by' => $user->id, 'customer_ledger_id' => $entry->id,
                 'note' => 'Return ' . $return->return_no,
-            ]);
+            ]));
         }
 
         $return->update([

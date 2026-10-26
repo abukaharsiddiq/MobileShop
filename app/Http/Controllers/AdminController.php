@@ -16,7 +16,7 @@ class AdminController extends Controller
 	    $thisMonth = now()->month;
 
 	    $data['today_sale'] = Sale::completed()->whereDate('sale_date', $today)->sum('grand_total');
-	    $data['monthly_expense'] = Expense::whereYear('expense_date', now()->year)->whereMonth('expense_date', $thisMonth)->sum('amount');
+	    $data['monthly_expense'] = Expense::posted()->whereYear('expense_date', now()->year)->whereMonth('expense_date', $thisMonth)->sum('amount');
 
 	    $data['total_stock_value'] = DB::table('main_stocks')
 	        ->sum(DB::raw('quantity * average_purchase_price'));

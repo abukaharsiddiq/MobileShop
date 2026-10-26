@@ -33,6 +33,7 @@ class SaleService
         private InvoiceNumberService $numbers,
         private LedgerService $ledger,
         private SalePaymentService $payments,
+        private FinancePostingService $finance,
     ) {}
 
     public function checkout(array $input, User $user): Sale
@@ -250,15 +251,18 @@ class SaleService
             'credit'           => round($paid - $creditUsed, 2),
             'note'             => 'Sale Invoice: ' . $sale->invoice_no . ($creditUsed > 0 ? ' (store credit ' . number_format($creditUsed, 2) . ')' : ''),
         ]);
+        // journal: Dr Receivable + Sales Discount, Cr Sales + Tax + Charge; Dr COGS, Cr Inventory
+        $this->finance->postSale($sale);
         foreach ($payments as $payment) {
-            SalePayment::create($payment + [
+            // protita method er taka: Dr Cash/Bank/Mobile, Cr Receivable (store credit e entry nei)
+            $this->finance->postSalePayment(SalePayment::create($payment + [
                 'sale_id'            => $sale->id,
                 'customer_id'        => $customer->id,
                 'type'               => SalePayment::TYPE_SALE,
                 'payment_date'       => $sale->sale_date,
                 'received_by'        => $user->id,
                 'customer_ledger_id' => $entry->id,
-            ]);
+            ]));
         }
 
         if ($belowCost) {
@@ -327,12 +331,14 @@ class SaleService
                 'debit'            => $paid,
                 'note'             => "Refund for cancelled sale ({$refundMethod})",
             ]);
-            SalePayment::create([
+            $this->finance->postSalePayment(SalePayment::create([
                 'sale_id' => $sale->id, 'customer_id' => $sale->customer_id, 'type' => SalePayment::TYPE_REFUND,
                 'method' => $refundMethod, 'channel' => $refundChannel, 'amount' => $paid, 'payment_date' => now()->toDateString(),
                 'received_by' => $user->id, 'customer_ledger_id' => $refund->id, 'note' => 'Sale cancelled: ' . $reason,
-            ]);
+            ]));
         }
+        // sale er journal ulta (ajker tarikhe): revenue, tax, COGS sob ferot
+        $this->finance->cancelSale($sale, $reason);
 
         $sale->update([
             'status'                  => Sale::STATUS_CANCELLED,

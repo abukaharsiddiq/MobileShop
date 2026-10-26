@@ -16,12 +16,13 @@ class SalePayment extends Model
 
     protected $fillable = [
         'sale_id', 'customer_id', 'type', 'method', 'channel', 'amount', 'account', 'reference',
-        'payment_date', 'received_by', 'customer_ledger_id', 'note', 'request_token',
+        'payment_date', 'received_by', 'customer_ledger_id', 'note', 'request_token', 'account_id',
+        'reversed_at', 'reversed_by', 'reverse_reason',
     ];
 
     protected function casts(): array
     {
-        return ['payment_date' => 'date', 'amount' => 'decimal:2'];
+        return ['payment_date' => 'date', 'amount' => 'decimal:2', 'reversed_at' => 'datetime'];
     }
 
     public function sale()
@@ -42,6 +43,17 @@ class SalePayment extends Model
     public static function channelOf(string $method): ?string
     {
         return self::methods()[$method] ?? null;
+    }
+
+    public function account()
+    {
+        return $this->belongsTo(Account::class);
+    }
+
+    // Shudhu pore deya due/kisti er taka batil kora jay (POS er taka: sale cancel/return)
+    public function isReversible(): bool
+    {
+        return $this->type === self::TYPE_DUE && !$this->reversed_at && $this->channel !== 'credit';
     }
 
     public function isRefund(): bool

@@ -88,6 +88,14 @@ class PermissionSeeder extends Seeder
             ['search imei', 'IMEI'],
             ['manage imei', 'IMEI'],      // reserve, repair, damaged
             ['access all branches', 'Branch'],
+            ['read accounts', 'Accounts'],          // chart of accounts, statement, journal, voucher list
+            ['manage accounts', 'Accounts'],        // account toiri/edit, opening balance, financial year
+            ['create income', 'Accounts'],
+            ['create transfer', 'Accounts'],
+            ['create journal', 'Accounts'],         // manual adjustment entry
+            ['reverse transaction', 'Accounts'],    // receipt/expense/income/transfer/journal batil
+            ['reconcile account', 'Accounts'],
+            ['read finance report', 'Report'],      // P&L, balance sheet, trial balance, income-expense
         ]);
     }
 }

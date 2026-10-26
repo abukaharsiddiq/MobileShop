@@ -18,6 +18,7 @@ class ExpenseReportController extends Controller
 
         $reportData = Expense::with('category')
             ->select('category_id', DB::raw('SUM(amount) as total_amount'))
+            ->posted()
             ->whereBetween('expense_date', [$start_date, $end_date])
             ->groupBy('category_id')
             ->get();
@@ -38,6 +39,7 @@ public function monthlySummary(Request $request){
             DB::raw('MONTH(expense_date) as month'),
             DB::raw('SUM(amount) as total_amount')
         )
+        ->posted()
         ->whereYear('expense_date', $year)
         ->groupBy('month')
         ->orderBy('month')
@@ -48,6 +50,7 @@ public function monthlySummary(Request $request){
             DB::raw('MONTH(expense_date) as month'),
             DB::raw('SUM(amount) as total_amount')
         )
+        ->posted()
         ->whereYear('expense_date', $year - 1)
         ->groupBy('month')
         ->get()

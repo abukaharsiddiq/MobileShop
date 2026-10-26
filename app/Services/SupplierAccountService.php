@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SupplierAccountService
 {
-    public function __construct(private LedgerService $ledger) {}
+    public function __construct(private LedgerService $ledger, private FinancePostingService $finance) {}
 
     // ---- supplier -----------------------------------------------------------------
 
@@ -45,6 +45,8 @@ class SupplierAccountService
                 'note'             => $opening > 0 ? 'Previous outstanding balance' : 'Previous advance to supplier',
             ]);
         }
+        // journal: Opening Balance Equity <-> Payable
+        $this->finance->postPartyOpening($supplier, $opening);
 
         AuditLogger::log('supplier.created', $supplier, null, $supplier->only(['name', 'phone', 'opening_balance']));
 
@@ -82,6 +84,7 @@ class SupplierAccountService
 
         $supplier->update(['opening_balance' => $amount]);
         $this->ledger->recalculateSupplier($supplier->id);
+        $this->finance->postPartyOpening($supplier, $amount);   // purono opening reverse, notun ta post
         $this->settle($supplier->id);
 
         AuditLogger::log('supplier.opening_balance_changed', $supplier, ['opening_balance' => $old], ['opening_balance' => $amount, 'reason' => $reason]);
@@ -237,6 +240,7 @@ class SupplierAccountService
             'debit'               => $amount,
             'note'                => $payment->note ?: ($purchase ? 'Due payment for Invoice #' . $purchase->invoice_no : 'Payment to supplier'),
         ]);
+        $this->finance->postSupplierPayment($payment);   // Dr Payable, Cr Cash/Bank
         $this->settle($supplier->id);
 
         AuditLogger::log('supplier_payment.created', $payment, null, $payment->only(['payment_no', 'amount', 'payment_date', 'payment_method', 'purchase_id']));
@@ -271,6 +275,7 @@ class SupplierAccountService
             'credit'              => $amount,
             'note'                => $payment->note ?: 'Advance refunded by supplier',
         ]);
+        $this->finance->postSupplierPayment($payment);   // Dr Cash/Bank, Cr Payable
         $this->settle($supplier->id);
 
         AuditLogger::log('supplier_payment.refund', $payment, null, $payment->only(['payment_no', 'amount', 'payment_date', 'payment_method']));
@@ -302,6 +307,7 @@ class SupplierAccountService
             'debit'               => $payment->isRefund() ? $amount : 0,
             'note'                => 'Void of ' . $payment->payment_no . ': ' . $reason,
         ]);
+        $this->finance->voidSupplierPayment($payment, $reason);   // journal ulta (ajker tarikhe)
         $this->settle($payment->supplier_id);
 
         AuditLogger::log('supplier_payment.voided', $payment, ['voided_at' => null], ['voided_at' => (string) $payment->voided_at, 'reason' => $reason]);

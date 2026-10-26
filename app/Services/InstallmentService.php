@@ -15,7 +15,7 @@ use Carbon\Carbon;
  */
 class InstallmentService
 {
-    public function __construct(private SalePaymentService $payments, private LedgerService $ledger) {}
+    public function __construct(private SalePaymentService $payments, private LedgerService $ledger, private FinancePostingService $finance) {}
 
     /**
      * Ekta kistir taka neya. Kistir bakir cheye beshi dile porer kisti te jay (advance), kintu invoice er
@@ -111,6 +111,7 @@ class InstallmentService
                 'debit'            => $fee,
                 'note'             => "Late fee: installment #{$installment->installment_no} due " . Carbon::parse($installment->due_date)->format('d-m-Y'),
             ]);
+            $this->finance->postLateFee($installment, $sale, $fee);   // Dr Receivable, Cr Late Fee income
             AuditLogger::log('installment.late_fee', $installment, null, ['fee' => $fee, 'invoice' => $sale->invoice_no]);
             $applied[] = ['installment' => $installment, 'fee' => $fee];
         }
@@ -145,6 +146,7 @@ class InstallmentService
             'credit'           => $waive,
             'note'             => "Late fee waived: installment #{$installment->installment_no} - {$reason}",
         ]);
+        $this->finance->postLateFeeWaiver($installment, $sale, $waive, $reason);
         $this->payments->refreshInstallmentCounters($sale);
         AuditLogger::log('installment.late_fee_waived', $installment, null, ['waived' => $waive, 'reason' => $reason]);
 
@@ -220,6 +222,7 @@ class InstallmentService
                 'credit'           => $discount,
                 'note'             => 'Early settlement discount' . ($note ? ': ' . $note : ''),
             ]);
+            $this->finance->postSettlementDiscount($sale, $discount);   // Dr Sales Discount, Cr Receivable
             $this->payments->syncScheduleToDue($sale, 'Early settlement discount.');
         }
 

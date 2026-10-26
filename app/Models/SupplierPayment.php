@@ -22,7 +22,7 @@ class SupplierPayment extends Model
 
     protected $fillable = [
         'supplier_id', 'payment_no', 'type', 'source', 'payment_date', 'amount', 'payment_method', 'payment_account',
-        'reference_no', 'purchase_id', 'idempotency_key', 'note', 'created_by', 'voided_at', 'voided_by', 'void_reason',
+        'reference_no', 'purchase_id', 'idempotency_key', 'note', 'created_by', 'voided_at', 'voided_by', 'void_reason', 'account_id',
     ];
 
     protected function casts(): array

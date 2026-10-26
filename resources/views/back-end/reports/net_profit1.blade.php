@@ -104,7 +104,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td>Total Sales (A)</td>
+                            <td>Net Sales (A) <small class="text-muted">after discounts and returns, without tax</small></td>
                             <td class="text-right"> {{ number_format($totalSales, 2) }}</td>
                         </tr>
                         <tr>
@@ -116,11 +116,15 @@
                             <td class="text-right"> {{ number_format($grossProfit, 2) }}</td>
                         </tr>
                         <tr>
-                            <td>Total Expenses (D)</td>
+                            <td>Other Income (D)</td>
+                            <td class="text-right">(+) {{ number_format($otherIncome ?? 0, 2) }}</td>
+                        </tr>
+                        <tr>
+                            <td>Total Expenses (E)</td>
                             <td class="text-right text-danger">(-) {{ number_format($totalExpenses, 2) }}</td>
                         </tr>
                         <tr class="{{ $netProfit >= 0 ? 'bg-success text-white' : 'bg-danger text-white' }} font-weight-bold" style="font-size: 1.1rem;">
-                            <td>Net Profit (C - D)</td>
+                            <td>Net Profit (C + D - E)</td>
                             <td class="text-right"> {{ number_format($netProfit, 2) }}</td>
                         </tr>
                     </tbody>

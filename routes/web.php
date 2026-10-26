@@ -18,6 +18,14 @@ use App\Http\Controllers\AttributeController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierPaymentController;
+use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AccountTransferController;
+use App\Http\Controllers\BankReconciliationController;
+use App\Http\Controllers\FinanceReportController;
+use App\Http\Controllers\FinancialYearController;
+use App\Http\Controllers\IncomeController;
+use App\Http\Controllers\JournalController;
+use App\Http\Controllers\PaymentVoucherController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -477,6 +485,54 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/get-customer-installments/{id}', [InstallmentCollectionController::class, 'getCustomerInstallments'])->name('customer')->middleware('can:create installment');
     });
     /* installment */
+
+    /* accounts & finance */
+    Route::prefix('finance')->name('finance.')->group(function () {
+        // chart of accounts (cash/bank/mobile banking shoho)
+        Route::get('/accounts', [AccountController::class, 'index'])->name('accounts.index')->middleware('can:read accounts');
+        Route::get('/accounts/create', [AccountController::class, 'create'])->name('accounts.create')->middleware('can:manage accounts');
+        Route::post('/accounts/store', [AccountController::class, 'store'])->name('accounts.store')->middleware('can:manage accounts');
+        Route::get('/accounts/edit/{id}', [AccountController::class, 'edit'])->name('accounts.edit')->middleware('can:manage accounts');
+        Route::put('/accounts/update/{id}', [AccountController::class, 'update'])->name('accounts.update')->middleware('can:manage accounts');
+        Route::post('/accounts/opening/{id}', [AccountController::class, 'opening'])->name('accounts.opening')->middleware('can:manage accounts');
+        Route::get('/accounts/statement/{id}', [AccountController::class, 'statement'])->name('accounts.statement')->middleware('can:read accounts');
+
+        Route::get('/income', [IncomeController::class, 'index'])->name('income.index')->middleware('can:read accounts');
+        Route::get('/income/create', [IncomeController::class, 'create'])->name('income.create')->middleware('can:create income');
+        Route::post('/income/store', [IncomeController::class, 'store'])->name('income.store')->middleware('can:create income');
+        Route::post('/income/reverse/{id}', [IncomeController::class, 'reverse'])->name('income.reverse')->middleware('can:reverse transaction');
+
+        Route::get('/transfers', [AccountTransferController::class, 'index'])->name('transfers.index')->middleware('can:read accounts');
+        Route::get('/transfers/create', [AccountTransferController::class, 'create'])->name('transfers.create')->middleware('can:create transfer');
+        Route::post('/transfers/store', [AccountTransferController::class, 'store'])->name('transfers.store')->middleware('can:create transfer');
+        Route::post('/transfers/reverse/{id}', [AccountTransferController::class, 'reverse'])->name('transfers.reverse')->middleware('can:reverse transaction');
+
+        Route::get('/journal', [JournalController::class, 'index'])->name('journal.index')->middleware('can:read accounts');
+        Route::get('/journal/create', [JournalController::class, 'create'])->name('journal.create')->middleware('can:create journal');
+        Route::post('/journal/store', [JournalController::class, 'store'])->name('journal.store')->middleware('can:create journal');
+        Route::get('/journal/show/{id}', [JournalController::class, 'show'])->name('journal.show')->middleware('can:read accounts');
+        Route::post('/journal/reverse/{id}', [JournalController::class, 'reverse'])->name('journal.reverse')->middleware('can:reverse transaction');
+
+        // customer receipt/refund + supplier payment ek list e; bhul due/kisti receipt batil
+        Route::get('/vouchers', [PaymentVoucherController::class, 'index'])->name('payments.index')->middleware('can:read accounts');
+        Route::post('/vouchers/reverse/{id}', [PaymentVoucherController::class, 'reverse'])->name('payments.reverse')->middleware('can:reverse transaction');
+
+        Route::get('/reconciliation', [BankReconciliationController::class, 'index'])->name('reconciliation.index')->middleware('can:reconcile account');
+        Route::post('/reconciliation/store', [BankReconciliationController::class, 'store'])->name('reconciliation.store')->middleware('can:reconcile account');
+        Route::get('/reconciliation/show/{id}', [BankReconciliationController::class, 'show'])->name('reconciliation.show')->middleware('can:reconcile account');
+        Route::put('/reconciliation/update/{id}', [BankReconciliationController::class, 'update'])->name('reconciliation.update')->middleware('can:reconcile account');
+        Route::delete('/reconciliation/discard/{id}', [BankReconciliationController::class, 'discard'])->name('reconciliation.discard')->middleware('can:reconcile account');
+
+        Route::get('/financial-years', [FinancialYearController::class, 'index'])->name('years.index')->middleware('can:manage accounts');
+        Route::post('/financial-years/store', [FinancialYearController::class, 'store'])->name('years.store')->middleware('can:manage accounts');
+        Route::post('/financial-years/toggle/{id}', [FinancialYearController::class, 'toggle'])->name('years.toggle')->middleware('can:manage accounts');
+
+        Route::get('/reports/income-expense', [FinanceReportController::class, 'incomeExpense'])->name('reports.income-expense')->middleware('can:read finance report');
+        Route::get('/reports/profit-loss', [FinanceReportController::class, 'profitLoss'])->name('reports.profit-loss')->middleware('can:read finance report');
+        Route::get('/reports/trial-balance', [FinanceReportController::class, 'trialBalance'])->name('reports.trial-balance')->middleware('can:read finance report');
+        Route::get('/reports/balance-sheet', [FinanceReportController::class, 'balanceSheet'])->name('reports.balance-sheet')->middleware('can:read finance report');
+    });
+    /* accounts & finance */
 
     /* attendance */
     Route::prefix('attendance')->name('attendance.')->group(function () {
