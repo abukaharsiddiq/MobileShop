@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>@yield('admin-title')</title>
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  @include('back-end.includes.theme-head')
 
-  <!-- Google Font: Source Sans Pro -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+  <!-- Font: Inter (English) + Hind Siliguri (Bangla) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap">
   <!-- Font Awesome -->
   <link rel="stylesheet" href="{{ asset('/') }}back-end/plugins/fontawesome-free/css/all.min.css">
   <!-- Ionicons -->
@@ -64,381 +67,62 @@
     }
 </script> -->
 
+  <!-- Premium theme (adminlte er upor design layer) -->
+  <link rel="stylesheet" href="{{ asset('/') }}back-end/css/premium.css?v={{ filemtime(public_path('back-end/css/premium.css')) }}">
+  @stack('admin-styles')
 </head>
-@stack('admin-styles')
-<style>
-
-/*  @font-face {
-    font-family: 'LiShohidAbuSayed1';
-    src: url("{{ asset('fonts/kalpurush.ttf') }}") format('truetype');
-}
-
-@font-face {
-    font-family: 'LiShohidAbuSayed';
-    src: url("{{ asset('fonts/Shurjo-bold.ttf') }}") format('truetype');
-}*/
-
-.dashboardIcon i {
-  width: 50px;
-  height: 50px;
-  border: 1px solid rgba(0,0,0,.2);
-  text-align: center;
-  line-height: 50px;
-  border-radius: 50%;
-  font-size: 25px;
-}
-
-.add-attr {
-  padding: 0px 5px;
-}
-
-.note-editor {
-  position: relative;
-  border-radius: 0;
-}
-
-  a.back-btn {
-  content: '';
-  position: absolute;
-  right: 23px;
-  top:0;
-  background: #fff;
-  border-radius: 0;
-  padding: 5px 20px;
-  border: 1px solid rgba(0,0,0,.3);
-}
-
-  .card-title {
-    font-size:18px;
-    font-weight: 600;
-  }
- .brand-image {
-  text-align: center;
-  /* margin-left: 80px; */
-/*  margin-top: 10px;*/
-  width: 130px;
-  height: 60px;
-}
-.brand-text.font-weight-light {
-  text-align: center;
-  color: #fff;
-  margin-top: 20px;
-}
-[class*="sidebar-dark-"] .nav-treeview > .nav-item > .nav-link {
-  color: #000!important;
-  font-size: 14px;
-  padding-left: 30px;
-}
-[class*="sidebar-dark-"] {
-  background: #f5f5f5;
-}
-
-[class*="sidebar-dark-"] .sidebar a {
-  color: #333333 !important;
-  border-bottom: 1px solid #dddddd;
-  border-radius: 0;
-}
-
-[class*="sidebar-dark-"] .nav-sidebar > .nav-item > .nav-link:active {
-  color: #333333;
-}
-
-.nav.nav-treeview {
-  background: #e0e0e0 !important;
-}
-
-.nav-sidebar .nav-treeview > .nav-item:hover > .nav-link > .nav-icon {
-  color:#333333;
-}
-
-.nav-sidebar .nav-item:hover > .nav-link {
-  color:#fff;
-}
-
-.nav-link.pos {
-  background: #00abff;
-  color: #fff !important;
-  /* padding: 0; */
-}
-
-.brand-text.font-weight-light {
-  text-align: center;
-  color: yellow;
-  padding: 10px 0px;
-  border-bottom: 1px solid rgba(255,255,255,.2);
-  margin-top:0;
-  font-weight: 800!important;
-}
-
-[class*="sidebar-dark-"] .nav-treeview > .nav-item > .nav-link {
-  color: #fff;
-  font-size: 14px;
-}
-
-.nav-pills .nav-link.active, .nav-pills .show > .nav-link {
-  background-color: #007bff;
-  color: #fff !important;
-  box-shadow: none!important;
-}
-
-thead {
-  background: #FFC300;
-  background:#007bff;
-  color: #fff;
-  text-align: center;
-  font-size: 15px!important;
-}
-tbody{
-  text-align: center;
-}
-tfoot{
-  text-align: center;
-}
-
-.card-header {
-  background: #000;
-  background: #f5f5f5;
-  padding: 5px 20px;
-  border-radius: 0;
-  color: #000;
-}
-
-.card-footer{
-  background: transparent;
-}
-
-.card-footer button {
-  background: #007bff;
-  border: none;
-  color: #fff;
-  padding: 6px 30px;
-  border-radius: 20px;
-  font-size: 16px;
-  margin-left: 145px!important;
-}
-.card-footer button:hover {
-  background: #0056b3;
-  color:#fff;
-}
-.form-control{
-  border-radius: 0;
-}
-.ml-20 {
-  margin-left: 20px;
-}
-.card {
-  box-shadow:none; 
-  margin-bottom: 1rem;
-  border: 1px solid #e4e5e7;
-  border-radius: 0;
-}
-
-.select2-container--default .select2-selection--single {
-  background-color: #fff;
-  border: 1px solid #aaa;
-   border-radius: 0;
-   height: 37px; 
-}
-.btn.btn-sm.btn-primary.float-end {
-  position: absolute;
-  right: 30px;
-  background: #000;
-  border: none;
-  color: yellow;
-  border-radius: 3px;
-  padding: 5px 10px;
-  font-size: 15px;
-}
-
-.btn.btn-sm.btn-info.float-end {
-  position: absolute;
-  right: 370px;
-  background: #000;
-  border: none;
-  color: yellow;
-  border-radius: 3px;
-  padding: 5px 10px;
-  font-size: 15px;
-}
-
-.brand-text.font-weight-light {
-  text-align: center;
-  color: #007bff;
-  padding: 10px 0px;
-  border-bottom: 1px solid rgba(255,255,255,.2);
-  margin-top: 0;
-  font-weight: 800 !important;
-}
-
-  .switch {
-  position: relative;
-  display: inline-block;
-  width: 34px;
-  height: 20px;
-}
-
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #ccc;
-  transition: 0.4s;
-  border-radius: 34px;
-}
-
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 14px;
-  width: 14px;
-  left: 3px;
-  bottom: 3px;
-  background-color: white;
-  transition: 0.4s;
-  border-radius: 50%;
-}
-
-input:checked + .slider {
-  background-color: #4caf50;
-}
-
-input:checked + .slider:before {
-  transform: translateX(14px);
-}
-img.menuImage{
-  width:15px;
-  height:15px;
-}
-
-
-/*dashboard*/
-.dashboard-container {
-    padding: 20px 0;
-}
-
-.stats-card {
-    background: #fff;
-    border-radius: 0px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.05);
-    padding: 20px 25px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    height:100%;
-}
-
-.stats-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 25px rgba(0,0,0,0.15);
-}
-
-.stats-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.stats-label {
-    font-size: 14px;
-    color: #777;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 5px;
-}
-
-.stats-number {
-    font-size: 28px;
-    font-weight: 700;
-    color: #333;
-}
-
-.stats-icon {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 20px;
-    transition: transform 0.3s ease;
-}
-
-.stats-card:hover .stats-icon {
-    transform: scale(1.1);
-}
-
-@media(max-width: 575px){
-    .stats-card {
-        flex-direction: column;
-        text-align: center;
-    }
-    .stats-icon {
-        margin-top: 15px;
-    }
-}
-/*dashboard*/
-
-</style>
 <body class="hold-transition sidebar-mini layout-fixed">
 <div class="wrapper">
 
   <!-- Navbar -->
   <nav class="main-header navbar navbar-expand navbar-white navbar-light">
     <!-- Left navbar links -->
-    <ul class="navbar-nav">
+    <ul class="navbar-nav align-items-center">
       <li class="nav-item">
-        <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
+        <a class="nav-link" data-widget="pushmenu" href="#" role="button" title="Menu"><i class="fas fa-bars"></i></a>
       </li>
       <li class="nav-item d-none d-sm-inline-block">
-        <a href="{{ route('admin.dashboard') }}" class="nav-link">Home</a>
+        <a href="{{ route(auth()->user()->homeRoute()) }}" class="nav-link"><i class="fas fa-home mr-1"></i> Home</a>
       </li>
-
-      <li class="nav-item d-none d-sm-inline-block">
-        <a href="#" class="nav-link">Contact</a>
-      </li> 
-
-      <li class="nav-item d-none d-sm-inline-block">
-        <a href="#" class="nav-link dateNow1">
-            
-        </a>
-      </li>
-
-      <li class="nav-item d-none d-sm-inline-block">
-        <a href="#" class="nav-link dateNow1">
+      <li class="nav-item d-none d-md-inline-block">
+        <span class="nav-link topbar-clock dateNow1">
+            <i class="far fa-calendar-alt"></i>
             <span id="banglaDate"></span>
-            <span id="digitalClock"></span>
-        </a>
+            <span id="digitalClock" class="font-weight-bold"></span>
+        </span>
       </li>
-
     </ul>
 
     <!-- Right navbar links -->
-    <ul class="navbar-nav ml-auto">
-     
-
-      <!-- Messages Dropdown Menu -->
-      <li class="nav-item dropdown">
-        <a class="nav-link" data-toggle="dropdown" href="#">
-          Welcome to {{ Auth::user()->name??'' }}
-        </a>
+    <ul class="navbar-nav ml-auto align-items-center">
+      <li class="nav-item">
+        <a class="nav-link topbar-icon-btn theme-toggle" href="#" data-theme-toggle title="Switch theme"><i class="fas fa-moon"></i></a>
       </li>
-      <li class="nav-item dropdown">
-        <a class="nav-link" id="voice-btn" data-toggle="dropdown" href="#">
-          🎤
-        </a>
+      <li class="nav-item">
+        <a class="nav-link topbar-icon-btn" id="voice-btn" href="#" title="Voice search"><i class="fas fa-microphone"></i></a>
       </li>
-      <!-- Notifications Dropdown Menu -->
-
+      @php
+          $me = Auth::user();
+          $initials = collect(preg_split('/\s+/', trim($me->name ?? 'U')))->filter()->take(2)->map(fn ($w) => mb_strtoupper(mb_substr($w, 0, 1)))->implode('');
+      @endphp
+      <li class="nav-item dropdown ml-1">
+        <a class="nav-link user-chip" data-toggle="dropdown" href="#" aria-expanded="false">
+          <span class="avatar">{{ $initials ?: 'U' }}</span>
+          <span class="who d-none d-sm-block">
+            <strong>{{ $me->name ?? '' }}</strong>
+            <small>{{ config("roles.{$me->role}.label", $me->role) }}</small>
+          </span>
+          <i class="fas fa-chevron-down text-muted small d-none d-sm-inline"></i>
+        </a>
+        <div class="dropdown-menu dropdown-menu-right">
+          <span class="dropdown-item-text small text-muted px-3">{{ $me->email ?? '' }}</span>
+          <div class="dropdown-divider"></div>
+          <a href="{{ route('profile.change.password') }}" class="dropdown-item"><i class="fas fa-lock"></i> Change password</a>
+          <a href="#" class="dropdown-item text-danger" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+            <i class="fas fa-sign-out-alt text-danger"></i> Logout
+          </a>
+        </div>
+      </li>
     </ul>
   </nav>
   <!-- /.navbar -->
@@ -448,20 +132,17 @@ img.menuImage{
 
    @php
     $user = auth()->user();
-    if ($user->role=='admin') {
-        $url = route('admin.dashboard');
-    } elseif ($user->role=='salesman') {
-        $url = route('sales.dashboard'); // route name matches!
-    } else {
-        $url = '#';
-    }
+    $url = route($user->homeRoute());   // protiti role er nijer dashboard
 @endphp
 
-<a href="{{ $url }}" class="brand-link1 d-flex justify-content-center align-items-center text-center">
+<a href="{{ $url }}" class="brand-link1">
     @if(isset($setting) && $setting->logo)
-        <img src="{{ asset('back-end/setting/'.$setting->logo) }}" alt="Logo" class="brand-image" style="opacity: .8; max-height: 60px;">
+        <img src="{{ asset('back-end/setting/'.$setting->logo) }}" alt="Logo" class="brand-image">
     @else
-        <h4 class="brand-text font-weight-light">{{ $setting->name ?? config('app.name') }}</h4>
+        <span class="brand-mark">
+            <span class="logo-chip"><i class="fas fa-mobile-alt"></i></span>
+            <span class="brand-name">{{ $setting->name ?? config('app.name') }}</span>
+        </span>
     @endif
 </a>
 

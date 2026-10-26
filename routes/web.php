@@ -81,9 +81,8 @@ Route::middleware(['auth'])->group(function () {
     });
 
     // Staff Dashboard (admin chara shob role)
-    Route::get('/sales/dashboard', function () {
-        return view('back-end.sales.dashboard');
-    })->name('sales.dashboard')->middleware('role:' . implode(',', User::staffRoles()));
+    Route::get('/sales/dashboard', \App\Http\Controllers\StaffDashboardController::class)
+        ->name('sales.dashboard')->middleware('role:' . implode(',', User::staffRoles()));
 
 
     Route::prefix('profile')->name('profile.')->group(function () {
