@@ -27,7 +27,7 @@ abstract class ProductRequest extends FormRequest
             'description' => $this->input('description', $this->input('accessory_note')),
             'unit'        => $this->input('unit') ?: 'pcs',
             // checkbox: na thakle single SIM; accessory te kokhono na
-            'dual_sim'    => $this->boolean('dual_sim') && $this->input('type') !== 'accessory',
+            'dual_sim'    => $this->boolean('dual_sim') && !in_array($this->input('type'), \App\Models\Product::NON_DEVICE_TYPES, true),
             'sku'         => $this->filled('sku') ? strtoupper(trim($this->input('sku'))) : null,
             'barcode'     => $this->filled('barcode') ? trim($this->input('barcode')) : null,
         ]);

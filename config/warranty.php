@@ -12,6 +12,7 @@ return [
         'refurbished_phone' => null,
         'button_phone'      => null,
         'accessory'         => null,
+        'spare_part'        => null,
     ],
 
     // eto din baki thakle "expiring soon" (reminder list)

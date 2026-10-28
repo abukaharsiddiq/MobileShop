@@ -100,7 +100,11 @@ class Product extends Model
         'refurbished_phone' => 'Refurbished Smart Phone',
         'button_phone'      => 'Button Phone',
         'accessory'         => 'Accessories',
+        'spare_part'        => 'Spare Parts',
     ];
+
+    // phone na (IMEI, RAM/storage, dual-SIM hoy na); spare part repair e lage, POS eo becha jay
+    const NON_DEVICE_TYPES = ['accessory', 'spare_part'];
 
     // IMEI chara kena-becha hobe na
     const IMEI_REQUIRED_TYPES = ['smart_phone', 'used_phone', 'refurbished_phone'];
@@ -132,10 +136,10 @@ class Product extends Model
         return in_array($this->type, self::SECOND_HAND_TYPES);
     }
 
-    // Accessories er IMEI thake na; button phone er IMEI oichchhik
+    // Accessories/spare part er IMEI thake na; button phone er IMEI oichchhik
     public function allowsImei()
     {
-        return $this->type !== 'accessory';
+        return !in_array($this->type, self::NON_DEVICE_TYPES, true);
     }
 
     // Smart phone (notun/used/refurbished) er variant e RAM ar storage lagbe
@@ -144,10 +148,10 @@ class Product extends Model
         return in_array($type, self::IMEI_REQUIRED_TYPES, true);
     }
 
-    // Accessories er RAM/storage hoy na (color hote pare)
+    // Accessories/spare part er RAM/storage hoy na (color hote pare)
     public static function typeAllowsMemory(?string $type): bool
     {
-        return $type !== 'accessory';
+        return !in_array($type, self::NON_DEVICE_TYPES, true);
     }
 
     public function isActive(): bool

@@ -44,6 +44,7 @@ return [
             'open cash session', 'read cash closing', 'approve cash closing',
             'read warranty', 'create warranty claim', 'manage warranty claim',
             'read used phone', 'create used phone', 'approve used phone', 'manage used phone',
+            'read repair', 'create repair', 'approve repair',
         ],
     ],
 
@@ -60,6 +61,7 @@ return [
             'open cash session',
             'read warranty', 'create warranty claim',
             'read used phone', 'create used phone',
+            'read repair', 'create repair',
         ],
     ],
 
@@ -78,18 +80,20 @@ return [
             'open cash session', 'read cash closing', 'approve cash closing',
             'read warranty',
             'read used phone',
+            'read repair',
         ],
     ],
 
     'technician' => [
         'label' => 'Technician',
-        'home'  => 'sales.dashboard',
+        'home'  => 'repair.board',   // nijer repair kaj er board
         'permissions' => [
             'read product', 'read customer',
             'read stock report', 'search imei', 'manage imei',   // repair e pathano/ferot
             'read stock adjustment', 'create stock adjustment',
             'read warranty', 'create warranty claim', 'manage warranty claim',
             'read used phone', 'manage used phone',   // refurbishment kaj ar khoroch
+            'read repair', 'work repair',
         ],
     ],
 

@@ -33,7 +33,8 @@ class AuthenticationSecurityTest extends SecurityTestCase
         $this->post('/logout');
 
         $tech = $this->staff('technician');
-        $this->post('/login', ['email' => $tech->email, 'password' => 'password'])->assertRedirect(route('sales.dashboard'));
+        // technician er home nijer repair board
+        $this->post('/login', ['email' => $tech->email, 'password' => 'password'])->assertRedirect(route('repair.board'));
         $this->assertAuthenticatedAs($tech);
     }
 

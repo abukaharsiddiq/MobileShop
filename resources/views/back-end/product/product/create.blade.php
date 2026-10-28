@@ -246,7 +246,7 @@ $(document).ready(function() {
             $('#phoneFields').show().find(':input').prop('disabled', true);
             $('select[name="color_id"], textarea[name="imeis"], input[name="dual_sim"]').prop('disabled', false);
             $('#accessoryFields').hide();
-        } else if(type === 'accessory'){
+        } else if(['accessory', 'spare_part'].includes(type)){
             $('#phoneFields').hide().find(':input').prop('disabled', true);
             $('#accessoryFields').show();
         }

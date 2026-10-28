@@ -87,7 +87,7 @@ class ImeiController extends Controller
             ->accessibleBy($request->user())
             ->groupBy('status')
             ->pluck('total', 'status');
-        $products = Product::where('type', '!=', 'accessory')->orderBy('product_name')->get(['id', 'product_name', 'model_number']);
+        $products = Product::whereNotIn('type', Product::NON_DEVICE_TYPES)->orderBy('product_name')->get(['id', 'product_name', 'model_number']);
         $branches = Branch::orderBy('name')->get(['id', 'name']);
 
         return view('back-end.reports.imei_stock', compact('name', 'title', 'imeis', 'counts', 'products', 'branches', 'status'));

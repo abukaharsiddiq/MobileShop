@@ -195,7 +195,7 @@ function toggleFields(type){
         phoneFields.style.display = 'block';
         phoneFields.querySelectorAll('select, textarea').forEach(el => el.disabled = false);
 
-    } else if(type === 'accessory'){
+    } else if(['accessory', 'spare_part'].includes(type)){
         // accessory er RAM/storage hoy na
         phoneFields.style.display = 'none';
         phoneFields.querySelectorAll('select, textarea').forEach(el => el.disabled = true);

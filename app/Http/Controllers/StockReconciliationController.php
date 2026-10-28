@@ -29,7 +29,7 @@ class StockReconciliationController extends Controller
         // IMEI lage emon stock jekhane quantity ar registered IMEI mele na
         $discrepancies = MainStock::with(['product', 'ram', 'rom', 'color'])
             ->withCount(['imeis as active_imei_count' => fn ($q) => $q->owned()])
-            ->whereHas('product', fn ($q) => $q->where('type', '!=', 'accessory'))
+            ->whereHas('product', fn ($q) => $q->whereNotIn('type', \App\Models\Product::NON_DEVICE_TYPES))
             ->get()
             ->filter(fn ($s) => $s->quantity != $s->active_imei_count && ($s->product->requiresImei() || $s->active_imei_count > $s->quantity));
 

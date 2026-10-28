@@ -62,7 +62,7 @@ class RoleAccessTest extends SecurityTestCase
             $this->actingAs($user)->get(route('sales.dashboard'))->assertOk();
 
             foreach (['admin.dashboard', 'setting.create', 'permission.index', 'salesman.index', 'branch.index'] as $name) {
-                $this->actingAs($user)->get(route($name))->assertRedirect(route('sales.dashboard'));
+                $this->actingAs($user)->get(route($name))->assertRedirect(route($user->homeRoute()));
             }
         }
     }
