@@ -83,6 +83,17 @@ class User extends Authenticatable
         return $this->isAdmin() || !$this->branch_id || $this->can('access all branches');
     }
 
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    // HR profile (designation, kaj er obostha, salary ...) - users row er bahire
+    public function profile()
+    {
+        return $this->hasOne(EmployeeProfile::class);
+    }
+
     // mul branch chara aro je branch/warehouse e kaj kore
     public function extraBranches()
     {

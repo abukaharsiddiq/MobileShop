@@ -32,6 +32,8 @@ use App\Http\Controllers\UsedPhoneController;
 use App\Http\Controllers\RepairController;
 use App\Http\Controllers\StockTransferController;
 use App\Http\Controllers\BranchReportController;
+use App\Http\Controllers\StaffController;
+use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -566,6 +568,31 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/missing/{id}', [StockTransferController::class, 'missing'])->name('missing')->middleware('can:approve transfer');
     });
     /* stock transfer */
+
+    /* staff: list/performance (read staff), profile nije ba 'read staff' (controller), profile edit (manage staff) */
+    Route::prefix('staff')->name('staff.')->group(function () {
+        Route::get('/', [StaffController::class, 'index'])->name('index')->middleware('can:read staff');
+        Route::get('/performance', [StaffController::class, 'performance'])->name('performance')->middleware('can:read staff');
+        Route::get('/show/{id}', [StaffController::class, 'show'])->name('show')->middleware('permission:read staff|read commission');
+        Route::post('/profile/{id}', [StaffController::class, 'updateProfile'])->name('profile')->middleware('can:manage staff');
+    });
+
+    /* commission: niyom/target/statement toiri (manage), approve/pay (approve), nijer statement (read) */
+    Route::prefix('commission')->name('commission.')->group(function () {
+        Route::get('/rules', [CommissionController::class, 'rules'])->name('rules')->middleware('can:manage commission');
+        Route::post('/rules', [CommissionController::class, 'storeRule'])->name('rules.store')->middleware('can:manage commission');
+        Route::post('/rules/toggle/{id}', [CommissionController::class, 'toggleRule'])->name('rules.toggle')->middleware('can:manage commission');
+        Route::get('/targets', [CommissionController::class, 'targets'])->name('targets')->middleware('can:manage commission');
+        Route::post('/targets', [CommissionController::class, 'storeTarget'])->name('targets.store')->middleware('can:manage commission');
+        Route::get('/statements', [CommissionController::class, 'statements'])->name('statements')->middleware('permission:read commission|manage commission|approve commission');
+        Route::post('/statements/generate', [CommissionController::class, 'generate'])->name('statements.generate')->middleware('can:manage commission');
+        Route::get('/statements/show/{id}', [CommissionController::class, 'show'])->name('statements.show')->middleware('permission:read commission|manage commission|approve commission');
+        Route::post('/statements/refresh/{id}', [CommissionController::class, 'refresh'])->name('statements.refresh')->middleware('can:manage commission');
+        Route::post('/statements/cancel/{id}', [CommissionController::class, 'cancel'])->name('statements.cancel')->middleware('can:manage commission');
+        Route::post('/statements/approve/{id}', [CommissionController::class, 'approve'])->name('statements.approve')->middleware('can:approve commission');
+        Route::post('/statements/pay/{id}', [CommissionController::class, 'pay'])->name('statements.pay')->middleware('can:approve commission');
+    });
+    /* staff & commission */
 
     /* branch report: purchase/sales/expense/labh (read branch report), branch-wise stock (read stock report) - nijer branch */
     Route::get('/branch-report', [BranchReportController::class, 'summary'])->name('branch-report.summary')->middleware('can:read branch report');

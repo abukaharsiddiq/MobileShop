@@ -46,6 +46,7 @@ return [
             'read used phone', 'create used phone', 'approve used phone', 'manage used phone',
             'read repair', 'create repair', 'approve repair',
             'read transfer', 'create transfer', 'approve transfer', 'process transfer', 'read branch report',
+            'read staff', 'read commission', 'manage commission',
         ],
     ],
 
@@ -64,6 +65,7 @@ return [
             'read used phone', 'create used phone',
             'read repair', 'create repair',
             'read transfer', 'create transfer', 'process transfer',
+            'read commission',
         ],
     ],
 
@@ -84,6 +86,7 @@ return [
             'read used phone',
             'read repair',
             'read transfer', 'read branch report',
+            'read staff', 'read commission', 'approve commission',
         ],
     ],
 
@@ -97,6 +100,7 @@ return [
             'read warranty', 'create warranty claim', 'manage warranty claim',
             'read used phone', 'manage used phone',   // refurbishment kaj ar khoroch
             'read repair', 'work repair',
+            'read commission',
         ],
     ],
 

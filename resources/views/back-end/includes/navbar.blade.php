@@ -662,6 +662,44 @@
         @endif
        <!--  ======== Warranty ========= -->
 
+       <!--  ======== Staff & Commission ========= -->
+        @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read staff', 'read commission', 'manage commission', 'approve commission']))
+            <li class="nav-item {{ request()->routeIs('staff.*', 'commission.*', 'salesman.*') ? 'menu-open' : '' }}">
+                <a href="#" class="nav-link {{ request()->routeIs('staff.*', 'commission.*', 'salesman.*') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-user-tie"></i>
+                    <p>Staff & Commission <i class="fas fa-angle-left right"></i></p>
+                </a>
+                <ul class="nav nav-treeview">
+                    @if($user->role == 'admin')
+                        <li class="nav-item"><a href="{{ route('salesman.create') }}" class="nav-link {{ request()->routeIs('salesman.create') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Add Staff</p></a></li>
+                        <li class="nav-item"><a href="{{ route('salesman.index') }}" class="nav-link {{ request()->routeIs('salesman.index', 'salesman.edit') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Staff Accounts</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->can('read staff'))
+                        <li class="nav-item"><a href="{{ route('staff.index') }}" class="nav-link {{ request()->routeIs('staff.index', 'staff.show') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Staff</p></a></li>
+                        <li class="nav-item"><a href="{{ route('staff.performance') }}" class="nav-link {{ request()->routeIs('staff.performance') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Performance</p></a></li>
+                    @else
+                        <li class="nav-item"><a href="{{ route('staff.show', auth()->id()) }}" class="nav-link {{ request()->routeIs('staff.show') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>My Profile</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read commission', 'manage commission', 'approve commission']))
+                        <li class="nav-item"><a href="{{ route('commission.statements') }}" class="nav-link {{ request()->routeIs('commission.statements*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Commission Statements</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->can('manage commission'))
+                        <li class="nav-item"><a href="{{ route('commission.rules') }}" class="nav-link {{ request()->routeIs('commission.rules') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Commission Rules</p></a></li>
+                        <li class="nav-item"><a href="{{ route('commission.targets') }}" class="nav-link {{ request()->routeIs('commission.targets') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Sales Targets</p></a></li>
+                    @endif
+                </ul>
+            </li>
+        @endif
+       <!--  ======== Staff & Commission ========= -->
+
        <!--  ======== Branch & Warehouse ========= -->
         @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read transfer', 'read branch report', 'read stock report']))
             <li class="nav-item {{ request()->routeIs('transfer.*', 'branch-report.*', 'branch.*') ? 'menu-open' : '' }}">
@@ -918,55 +956,7 @@
             $isAdmin = $user->role == 'admin';
         @endphp
 
-        {{-- staff route gulo role:admin --}}
-        @if($isAdmin)
-            <li class="nav-item {{ request()->routeIs('salesman.*') ? 'menu-open' : '' }}">
-                <a href="#" class="nav-link {{ request()->routeIs('salesman.*') ? 'active' : '' }}">
-                    <i class="nav-icon fas fa-user-tie"></i>
-                    <p>
-                        Employee Management
-                        <i class="fas fa-angle-left right"></i>
-                    </p>
-                </a>
-
-                <ul class="nav nav-treeview">
-
-                    {{-- Salesman Section --}}
-                    @if($isAdmin)
-                    <li class="nav-item {{ request()->routeIs('salesman.*') ? 'menu-open' : '' }}">
-                        <a href="#" class="nav-link {{ request()->routeIs('salesman.*') ? 'active' : '' }}">
-                            <i class="far fa-folder nav-icon"></i>
-                            <p>Staff <i class="fas fa-angle-left right"></i></p>
-                        </a>
-
-                        <ul class="nav nav-treeview">
-                            @if($isAdmin)
-                            <li class="nav-item">
-                                <a href="{{ route('salesman.create') }}"
-                                   class="nav-link {{ request()->routeIs('salesman.create') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Add Staff</p>
-                                </a>
-                            </li>
-                            @endif
-
-                            @if($isAdmin)
-                            <li class="nav-item">
-                                <a href="{{ route('salesman.index') }}"
-                                   class="nav-link {{ request()->routeIs('salesman.index') ? 'active' : '' }}">
-                                    <i class="far fa-circle nav-icon"></i>
-                                    <p>Manage Staff</p>
-                                </a>
-                            </li>
-                            @endif
-                        </ul>
-                    </li>
-                    @endif
-
-                </ul>
-            </li>
-        @endif
-       <!--  ======== salesman ========= -->
+        {{-- staff account (salesman.*) er link "Staff & Commission" menu te --}}
 
 
        <!--  ======== permission ========= -->
