@@ -3,68 +3,29 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Sale;
-use App\Models\Expense;
+use Illuminate\Validation\Rule;
+use App\Models\Branch;
 use App\Models\ProductImei;
-use DB;
+use App\Services\DashboardService;
 
 class AdminController extends Controller
 {
-    public function index(){
+    // Somoy (range) ar branch er filter; shob card/chart/table ekoi filter e (DashboardService)
+    public function index(Request $request, DashboardService $dashboard)
+    {
+        $request->validate([
+            'range'     => ['nullable', Rule::in(array_keys(DashboardService::RANGES))],
+            'branch_id' => 'nullable|integer|exists:branches,id',
+        ]);
+        $branchId = $request->integer('branch_id') ?: null;
 
-	    $today = now()->format('Y-m-d');
-	    $thisMonth = now()->month;
-
-	    $data['today_sale'] = Sale::completed()->whereDate('sale_date', $today)->sum('grand_total');
-	    $data['monthly_expense'] = Expense::posted()->whereYear('expense_date', now()->year)->whereMonth('expense_date', $thisMonth)->sum('amount');
-
-	    $data['total_stock_value'] = DB::table('main_stocks')
-	        ->sum(DB::raw('quantity * average_purchase_price'));
-
-	    $data['total_stock_qty'] = DB::table('main_stocks')->sum('quantity');
-
-	    $data['low_stocks'] = DB::table('main_stocks')
-	        ->join('products', 'main_stocks.product_id', '=', 'products.id')
-	        ->leftJoin('rams', 'main_stocks.ram_id', '=', 'rams.id')
-	        ->leftJoin('roms', 'main_stocks.rom_id', '=', 'roms.id')
-	        ->leftJoin('colors', 'main_stocks.color_id', '=', 'colors.id')
-	        ->select('products.product_name', 'rams.ram_name', 'roms.rom_name','colors.color_name', 'main_stocks.quantity')
-	        // variant -> product -> default threshold (0 o dekhay); inactive product/variant na
-	        ->whereRaw('main_stocks.quantity <= ' . \App\Models\MainStock::thresholdSql())
-	        ->where('main_stocks.status', 1)
-	        ->where('products.status', 1)
-	        ->orderBy('main_stocks.quantity')
-	        ->get();
-
-	       
-		$data['top_products'] = DB::table('sale_details')
-		    ->join('products', 'sale_details.product_id', '=', 'products.id')
-		    ->join('sales', 'sale_details.sale_id', '=', 'sales.id')
-		    ->where('sales.status', 'completed')
-		    ->whereYear('sales.sale_date', now()->year)->whereMonth('sales.sale_date', now()->month)
-		    ->select('products.product_name', 
-		            DB::raw('SUM(sale_details.quantity) as total_qty'),
-		            DB::raw('SUM(sale_details.unit_total) as total_revenue'))
-		    ->groupBy('products.id', 'products.product_name')
-		    ->orderBy('total_qty', 'desc')
-		    ->limit(5)
-		    ->get();
-
-	
-		$data['total_dues'] = DB::table('sales')->sum('due_amount');
-
-	
-		$data['top_due_customers'] = DB::table('sales')
-		    ->join('customers', 'sales.customer_id', '=', 'customers.id')
-		    ->select('customers.name as customer_name', DB::raw('SUM(sales.due_amount) as due_amount'))
-		    ->where('sales.due_amount', '>', 0)
-		    ->groupBy('customers.id', 'customers.name')
-		    ->orderBy('due_amount', 'desc')
-		    ->limit(5)
-		    ->get();
-
-	    return view('back-end.admin.dashboard', $data);
-	}
+        return view('back-end.admin.dashboard', [
+            'd'        => $dashboard->build($request->input('range', '30d'), $branchId),
+            'ranges'   => DashboardService::RANGES,
+            'branches' => Branch::orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'type', 'is_default']),
+            'branchId' => $branchId,
+        ]);
+    }
 
 
 	public function imeiSearch(Request $request)
