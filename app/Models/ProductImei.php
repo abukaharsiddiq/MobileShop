@@ -19,19 +19,21 @@ class ProductImei extends Model
     const STATUS_IN_REPAIR = 4;
     const STATUS_DAMAGED = 5;
     const STATUS_WRITTEN_OFF = 6;             // haralo/churi/nosto - stock theke bad
+    const STATUS_IN_TRANSIT = 7;              // branch transfer er pothe (dokaner, bikri/ferot hoy na)
 
     const STATUSES = [
         self::STATUS_AVAILABLE            => 'Available',
         self::STATUS_RESERVED             => 'Reserved',
         self::STATUS_IN_REPAIR            => 'In Repair',
         self::STATUS_DAMAGED              => 'Damaged',
+        self::STATUS_IN_TRANSIT           => 'In Transit',
         self::STATUS_SOLD                 => 'Sold',
         self::STATUS_RETURNED_TO_SUPPLIER => 'Returned to Supplier',
         self::STATUS_WRITTEN_OFF          => 'Written Off',
     ];
 
     // dokaner dokhole (stock quantity te gona hoy, ekoi IMEI arekbar dokhole aste pare na)
-    const OWNED_STATUSES = [self::STATUS_AVAILABLE, self::STATUS_RESERVED, self::STATUS_IN_REPAIR, self::STATUS_DAMAGED];
+    const OWNED_STATUSES = [self::STATUS_AVAILABLE, self::STATUS_RESERVED, self::STATUS_IN_REPAIR, self::STATUS_DAMAGED, self::STATUS_IN_TRANSIT];
 
     protected $fillable = [
         'purchase_id',
@@ -210,7 +212,7 @@ class ProductImei extends Model
     {
         return match ((int) $this->status) {
             self::STATUS_AVAILABLE => 'success',
-            self::STATUS_RESERVED, self::STATUS_IN_REPAIR => 'info',
+            self::STATUS_RESERVED, self::STATUS_IN_REPAIR, self::STATUS_IN_TRANSIT => 'info',
             self::STATUS_DAMAGED, self::STATUS_RETURNED_TO_SUPPLIER => 'warning',
             self::STATUS_WRITTEN_OFF => 'dark',
             default => 'danger',

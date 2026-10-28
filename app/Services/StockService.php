@@ -231,6 +231,6 @@ class StockService
         }
 
         return $reference->invoice_no ?? $reference->return_no ?? $reference->adjustment_no ?? $reference->count_no
-            ?? $reference->intake_no ?? $reference->job_no ?? null;
+            ?? $reference->intake_no ?? $reference->job_no ?? $reference->transfer_no ?? null;
     }
 }

@@ -48,7 +48,32 @@
                                         </div>
                                     </div>
 
-                                    <div class="form-group row">
+                                    @php $current = $branch->type; $currentManager = $branch->manager_id; @endphp
+                    <div class="form-group row">
+                      <label class="col-sm-3 text-end control-label col-form-label">Type</label>
+                      <div class="col-sm-9">
+                        <select name="branch_type" class="form-control">
+                          @foreach(\App\Models\Branch::TYPES as $key => $label)
+                            <option value="{{ $key }}" @selected(old('branch_type', $current ?? 'branch') === $key)>{{ $label }}</option>
+                          @endforeach
+                        </select>
+                        <small class="text-muted">A warehouse keeps stock but cannot sell at the POS; transfer stock to a branch to sell it.</small>
+                        @error('branch_type')<span class="text-danger d-block">{{ $message }}</span>@enderror
+                      </div>
+                    </div>
+                    <div class="form-group row">
+                      <label class="col-sm-3 text-end control-label col-form-label">Manager</label>
+                      <div class="col-sm-9">
+                        <select name="manager_id" class="form-control">
+                          <option value="">--</option>
+                          @foreach($managers as $m)
+                            <option value="{{ $m->id }}" @selected((int) old('manager_id', $currentManager ?? 0) === $m->id)>{{ $m->name }} ({{ $m->role }})</option>
+                          @endforeach
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="form-group row">
                                         <label for="branch_email" class="col-sm-3 text-end control-label col-form-label">Branch Email</label>
                                         <div class="col-sm-9">
                                             <input

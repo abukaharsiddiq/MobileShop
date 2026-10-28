@@ -41,6 +41,9 @@ class ImeiService
     const WARRANTY_REPLACED = 'warranty_replaced';      // nosto phone dokane (damaged), customer notun pelo
     const WARRANTY_REPLACEMENT = 'warranty_replacement'; // notun phone ta kon claim e deya holo
     const USED_PURCHASE = 'used_purchase';              // purono phone kena (UsedPhoneService)
+    const TRANSFER_DISPATCH = 'transfer_dispatch';      // stock transfer: source theke pothe (in transit)
+    const TRANSFER_RECEIVE = 'transfer_receive';        // stock transfer: destination e pouchhalo
+    const LOST_IN_TRANSIT = 'lost_in_transit';          // stock transfer: pouchhay ni (stock theke bad)
 
     // hate status bodlano (permission: manage imei): [from => [to => event]]
     const TRANSITIONS = [
@@ -314,7 +317,7 @@ class ImeiService
      */
     public function returnToSupplier(ProductImei $imei, Model $purchaseReturn, int $supplierId): void
     {
-        if (!$imei->isOwned() || (int) $imei->status === ProductImei::STATUS_RESERVED) {
+        if (!$imei->isOwned() || in_array((int) $imei->status, [ProductImei::STATUS_RESERVED, ProductImei::STATUS_IN_TRANSIT], true)) {
             throw new \Exception("IMEI {$imei->imei_no} is {$imei->statusText()} and cannot be returned to the supplier.");
         }
 
@@ -337,6 +340,50 @@ class ImeiService
         $from = $imei->branch_id;
         $imei->update(['branch_id' => $toBranchId]);
         $this->record($imei, self::TRANSFER, $reference, trim("From branch #{$from} to #{$toBranchId}. " . $note));
+    }
+
+    /**
+     * Stock transfer dispatch: dokane thaka phone (available/damaged) "In Transit" location e, status in transit.
+     * Ager obostha (available/damaged) fere - pouchhale sei obostha (ba damaged).
+     */
+    public function sendInTransit(ProductImei $imei, int $transitBranchId, Model $transfer, string $note): int
+    {
+        $from = (int) $imei->status;
+        if (!in_array($from, [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_DAMAGED], true)) {
+            throw new \Exception("IMEI {$imei->imei_no} is {$imei->statusText()} and cannot be dispatched.");
+        }
+
+        $imei->update(['branch_id' => $transitBranchId, 'status' => ProductImei::STATUS_IN_TRANSIT, 'reserved_customer_id' => null,
+            'status_changed_at' => now()]);
+        $this->record($imei, self::TRANSFER_DISPATCH, $transfer, $note);
+
+        return $from;
+    }
+
+    // Destination e pouchhalo: available ba damaged (bhanga obosthay)
+    public function receiveFromTransit(ProductImei $imei, int $branchId, int $status, Model $transfer, string $note): void
+    {
+        if ((int) $imei->status !== ProductImei::STATUS_IN_TRANSIT) {
+            throw new \Exception("IMEI {$imei->imei_no} is {$imei->statusText()}, not in transit.");
+        }
+        if (!in_array($status, [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_DAMAGED], true)) {
+            throw new \LogicException('A transferred phone arrives as Available or Damaged.');
+        }
+
+        $imei->update(['branch_id' => $branchId, 'status' => $status,
+            'status_note' => $status === ProductImei::STATUS_DAMAGED ? 'Arrived damaged (transfer)' : null, 'status_changed_at' => now()]);
+        $this->record($imei, self::TRANSFER_RECEIVE, $transfer, $note);
+    }
+
+    // Pouchhay ni: stock theke bad (written off); caller stock o kome (LOST)
+    public function lostInTransit(ProductImei $imei, Model $transfer, string $reason): void
+    {
+        if ((int) $imei->status !== ProductImei::STATUS_IN_TRANSIT) {
+            throw new \Exception("IMEI {$imei->imei_no} is {$imei->statusText()}, not in transit.");
+        }
+
+        $imei->update(['status' => ProductImei::STATUS_WRITTEN_OFF, 'status_note' => $reason, 'status_changed_at' => now()]);
+        $this->record($imei, self::LOST_IN_TRANSIT, $transfer, $reason);
     }
 
     // Haralo/churi/nosto: stock adjustment approve hole (stock o kome)

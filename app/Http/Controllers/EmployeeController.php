@@ -59,6 +59,8 @@ class EmployeeController extends Controller
             'password'  => 'required|string|min:8|confirmed',
             'role'      => ['required', Rule::in(User::staffRoles())],
             'branch_id' => 'nullable|exists:branches,id',
+            'extra_branch_ids'   => 'nullable|array',
+            'extra_branch_ids.*' => 'integer|exists:branches,id',
         ]);
 
         $user = DB::transaction(function () use ($request) {
@@ -78,6 +80,7 @@ class EmployeeController extends Controller
 
             // role er default permission (config/roles.php); pore assign page theke bodlano jay
             $user->givePermissionTo(self::templatePermissions($request->role));
+            $this->syncExtraBranches($user, $request);
 
             return $user;
         });
@@ -95,8 +98,9 @@ class EmployeeController extends Controller
         $employee  = $this->staff()->findOrFail($id);
         $branches = Branch::where('status', 1)->orderBy('name')->get();
         $roles = $this->roleOptions();
+        $extraIds = $employee->extraBranches()->pluck('branches.id')->all();
 
-        return view('back-end.sales.edit', compact('employee','name','title','branches','roles'));
+        return view('back-end.sales.edit', compact('employee','name','title','branches','roles','extraIds'));
     }
 
     public function update(Request $request, $id)
@@ -111,6 +115,8 @@ class EmployeeController extends Controller
             'role'      => ['nullable', Rule::in(User::staffRoles())],
             'branch_id' => 'nullable|exists:branches,id',
             'status'    => 'nullable|in:0,1',
+            'extra_branch_ids'   => 'nullable|array',
+            'extra_branch_ids.*' => 'integer|exists:branches,id',
         ]);
 
         $old = $employee->only(['name', 'email', 'role', 'branch_id', 'status']);
@@ -132,8 +138,10 @@ class EmployeeController extends Controller
             $data['password'] = Hash::make($request->password);
         }
 
-        DB::transaction(function () use ($employee, $data) {
+        $oldExtra = $employee->extraBranches()->pluck('branches.id')->sort()->values()->all();
+        DB::transaction(function () use ($employee, $data, $request) {
             $employee->update($data);
+            $this->syncExtraBranches($employee, $request);
             // role bodlale Spatie role o; direct permission thik ager moto thake
             $employee->syncRoles([$employee->role]);
         });
@@ -143,8 +151,9 @@ class EmployeeController extends Controller
             UserSessions::terminate($employee);
         }
 
-        AuditLogger::log('user.updated', $employee, $old, $employee->only(array_keys($old))
-            + ($request->filled('password') ? ['password' => 'changed'] : []));
+        $newExtra = $employee->extraBranches()->pluck('branches.id')->sort()->values()->all();
+        AuditLogger::log('user.updated', $employee, $old + ['extra_branches' => $oldExtra], $employee->only(array_keys($old))
+            + ['extra_branches' => $newExtra] + ($request->filled('password') ? ['password' => 'changed'] : []));
 
         Toastr::success('Data Updated Successfully', 'Success', ["positionClass" => "toast-top-right"]);
           return redirect()->route('salesman.index');
@@ -183,6 +192,14 @@ class EmployeeController extends Controller
     private function staff()
     {
         return User::whereIn('role', User::staffRoles());
+    }
+
+    // mul branch chara aro je branch/warehouse e kaj kore (mul branch na thakle shob branch, tai dorkar nei)
+    private function syncExtraBranches(User $user, Request $request): void
+    {
+        $ids = $user->branch_id ? array_diff(array_map('intval', (array) $request->input('extra_branch_ids', [])), [(int) $user->branch_id]) : [];
+        $user->extraBranches()->sync(array_values(array_unique($ids)));
+        $user->forgetBranchAccess();
     }
 
     private function roleOptions(): array

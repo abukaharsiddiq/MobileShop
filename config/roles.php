@@ -45,6 +45,7 @@ return [
             'read warranty', 'create warranty claim', 'manage warranty claim',
             'read used phone', 'create used phone', 'approve used phone', 'manage used phone',
             'read repair', 'create repair', 'approve repair',
+            'read transfer', 'create transfer', 'approve transfer', 'process transfer', 'read branch report',
         ],
     ],
 
@@ -62,6 +63,7 @@ return [
             'read warranty', 'create warranty claim',
             'read used phone', 'create used phone',
             'read repair', 'create repair',
+            'read transfer', 'create transfer', 'process transfer',
         ],
     ],
 
@@ -81,6 +83,7 @@ return [
             'read warranty',
             'read used phone',
             'read repair',
+            'read transfer', 'read branch report',
         ],
     ],
 

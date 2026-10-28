@@ -110,6 +110,11 @@ class PermissionSeeder extends Seeder
             ['create repair', 'Repair'],              // job card kholar, advance/payment, delivery
             ['work repair', 'Repair'],                // technician: kaj shuru, part chaoa, kaj shesh
             ['approve repair', 'Repair'],             // technician deya, part approve (stock kome), QC, cancel
+            ['read transfer', 'Stock Transfer'],      // nijer branch er transfer list/details/challan
+            ['create transfer', 'Stock Transfer'],    // transfer chaoa (request)
+            ['approve transfer', 'Stock Transfer'],   // approve/reject (source branch), missing dhora
+            ['process transfer', 'Stock Transfer'],   // dispatch (source branch), receive (destination branch)
+            ['read branch report', 'Report'],         // branch onujayi purchase, sales, expense, labh
         ]);
     }
 }
