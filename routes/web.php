@@ -29,6 +29,7 @@ use App\Http\Controllers\PaymentVoucherController;
 use App\Http\Controllers\CashClosingController;
 use App\Http\Controllers\WarrantyController;
 use App\Http\Controllers\UsedPhoneController;
+use App\Http\Controllers\RepairController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -521,6 +522,31 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/pricing/{id}', [UsedPhoneController::class, 'pricing'])->name('pricing')->middleware('can:manage used phone');
     });
     /* used & refurbished phone */
+
+    /* repair: dekha/print/report (read), job card/taka/delivery (create), technician er kaj (work), part approve/QC/cancel (approve) */
+    Route::prefix('repair')->name('repair.')->group(function () {
+        Route::get('/', [RepairController::class, 'index'])->name('index')->middleware('permission:read repair|work repair');
+        Route::get('/board', [RepairController::class, 'board'])->name('board')->middleware('permission:work repair|approve repair');
+        Route::get('/create', [RepairController::class, 'create'])->name('create')->middleware('can:create repair');
+        Route::post('/store', [RepairController::class, 'store'])->name('store')->middleware('can:create repair');
+        Route::get('/check-device', [RepairController::class, 'checkDevice'])->name('check-device')->middleware('can:create repair');
+        Route::get('/report', [RepairController::class, 'report'])->name('report')->middleware('can:read repair');
+        Route::get('/show/{id}', [RepairController::class, 'show'])->name('show')->middleware('permission:read repair|work repair');
+        Route::get('/print/{id}', [RepairController::class, 'print'])->name('print')->middleware('permission:read repair|work repair');
+        Route::post('/assign/{id}', [RepairController::class, 'assign'])->name('assign')->middleware('can:approve repair');
+        Route::post('/start/{id}', [RepairController::class, 'start'])->name('start')->middleware('permission:work repair|approve repair');
+        Route::post('/waiting/{id}', [RepairController::class, 'waiting'])->name('waiting')->middleware('permission:work repair|approve repair');
+        Route::post('/part/{id}', [RepairController::class, 'requestPart'])->name('part.request')->middleware('permission:work repair|approve repair');
+        Route::post('/part/approve/{part}', [RepairController::class, 'approvePart'])->name('part.approve')->middleware('can:approve repair');
+        Route::post('/part/reject/{part}', [RepairController::class, 'rejectPart'])->name('part.reject')->middleware('can:approve repair');
+        Route::post('/part/return/{part}', [RepairController::class, 'returnPart'])->name('part.return')->middleware('can:approve repair');
+        Route::post('/complete/{id}', [RepairController::class, 'complete'])->name('complete')->middleware('permission:work repair|approve repair');
+        Route::post('/qc/{id}', [RepairController::class, 'qc'])->name('qc')->middleware('can:approve repair');
+        Route::post('/payment/{id}', [RepairController::class, 'payment'])->name('payment')->middleware('can:create repair');
+        Route::post('/deliver/{id}', [RepairController::class, 'deliver'])->name('deliver')->middleware('can:create repair');
+        Route::post('/cancel/{id}', [RepairController::class, 'cancel'])->name('cancel')->middleware('can:approve repair');
+    });
+    /* repair */
 
     /* daily cash closing: cashier nijer session; 'read cash closing' shob; 'approve cash closing' review */
     Route::prefix('cash-closing')->name('cash-closing.')->group(function () {

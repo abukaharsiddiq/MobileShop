@@ -300,7 +300,7 @@ class CashClosingService
             $row['count']++;
             unset($row);
         }
-        $order = array_flip(['Cash sales', 'Collections', 'Other income', 'Cash in / out', 'Refunds', 'Expenses', 'Supplier payments', 'Supplier refunds', 'Used phones', 'Transfers', 'Reversals', 'Other']);
+        $order = array_flip(['Cash sales', 'Collections', 'Repair receipts', 'Other income', 'Cash in / out', 'Refunds', 'Expenses', 'Supplier payments', 'Supplier refunds', 'Used phones', 'Transfers', 'Reversals', 'Other']);
         uksort($rows, fn ($a, $b) => ($order[$a] ?? 99) <=> ($order[$b] ?? 99));
 
         $in = round(array_sum(array_column($rows, 'in')), 2);
@@ -358,6 +358,8 @@ class CashClosingService
             'transfer'         => 'Transfers',
             'cash_movement'    => 'Cash in / out',
             'used_phone_purchase', 'used_phone_refurbishment' => 'Used phones',
+            'repair_receipt'   => 'Repair receipts',
+            'repair_refund'    => 'Refunds',
             'reversal'         => 'Reversals',
             default            => 'Other',
         };

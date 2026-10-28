@@ -13,6 +13,9 @@ use App\Models\JournalEntry;
 use App\Models\MainStock;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
+use App\Models\RepairJob;
+use App\Models\RepairJobPart;
+use App\Models\RepairPayment;
 use App\Models\Sale;
 use App\Models\SalePayment;
 use App\Models\SaleReturn;
@@ -41,6 +44,9 @@ use Illuminate\Support\Str;
  *  Purchase return  Dr Payable                                       Cr Inventory +/- Purchase Return Price Difference
  *  Used phone       Dr Inventory (kena dam)                          Cr Cash/Bank/Mobile    (seller ke nogod deya)
  *  Refurbishment    Dr Inventory (khoroch phone er dam e jog)        Cr Cash/Bank/Mobile
+ *  Repair receipt   Dr Cash/Bank/Mobile                              Cr Receivable          (advance/payment; refund ulta)
+ *  Repair part      Dr Repair Parts Cost                             Cr Inventory           (part approve; ferot hole reverse)
+ *  Repair invoice   Dr Receivable + Sales Discount                   Cr Repair Service Income + Repair Parts Sales
  *  Stock adjustment Dr Inventory Adjustment (kom) / Inventory (beshi) Cr ulta; opening stock Cr Opening Balance Equity
  *  Expense          Dr Expense (category account)                    Cr Cash/Bank
  *  Income           Dr Cash/Bank                                     Cr Income account
@@ -329,6 +335,85 @@ class FinancePostingService
         ], [
             ['account' => 'inventory', 'debit' => $amount, 'memo' => 'Refurbishment cost'],
             ['account' => $money, 'credit' => $amount],
+        ]);
+    }
+
+    // ---- repair -------------------------------------------------------------------------
+
+    // Advance/payment: customer er taka (receivable e credit, advance hole agrim); refund ulta
+    public function postRepairPayment(RepairPayment $payment, RepairJob $job): JournalEntry
+    {
+        $money = Account::moneyFor($payment->account_id, $payment->method);
+        $payment->update(['account_id' => $money->id]);
+        $amount = round((float) $payment->amount, 2);
+        $refund = $payment->isRefund();
+        $party = ['party_type' => 'customer', 'party_id' => $payment->customer_id];
+
+        return $this->accounting->post([
+            'date'         => $payment->payment_date,
+            'event'        => $refund ? 'repair_refund' : 'repair_receipt',
+            'source'       => $payment,
+            'reference_no' => $job->job_no,
+            'narration'    => ($refund ? 'Repair refund' : 'Repair ' . strtolower($payment->label())) . " ({$payment->method}"
+                . ($payment->reference ? " {$payment->reference}" : '') . ") - {$job->job_no}",
+            'branch_id'    => $job->branch_id,
+        ], $refund ? [
+            ['account' => 'receivable', 'debit' => $amount] + $party,
+            ['account' => $money, 'credit' => $amount],
+        ] : [
+            ['account' => $money, 'debit' => $amount],
+            ['account' => 'receivable', 'credit' => $amount] + $party,
+        ]);
+    }
+
+    // Part stock theke gelo: kena dam khoroch (Repair Parts Cost), inventory kome
+    public function postRepairPart(RepairJobPart $part, RepairJob $job): ?JournalEntry
+    {
+        $value = $part->lineCost();
+        if ($value <= 0) {
+            return null;
+        }
+
+        return $this->accounting->post([
+            'date'         => now()->toDateString(),
+            'event'        => 'repair_part',
+            'source'       => $part,
+            'reference_no' => $job->job_no,
+            'narration'    => "Repair part {$part->quantity} x " . ($part->mainStock?->variantLabel() ?? $part->product?->product_name) . " for {$job->job_no}",
+            'branch_id'    => $job->branch_id,
+        ], [
+            ['account' => 'repair_parts_cost', 'debit' => $value, 'memo' => 'Parts used in repair'],
+            ['account' => 'inventory', 'credit' => $value],
+        ]);
+    }
+
+    public function reverseRepairPart(RepairJobPart $part, string $reason): ?JournalEntry
+    {
+        $entry = $this->accounting->liveEntry('RepairJobPart', $part->id, 'repair_part');
+
+        return $entry ? $this->accounting->reverse($entry, $reason) : null;
+    }
+
+    // Delivery (ba cancel charge): service charge ar parts er income alada account e
+    public function postRepairInvoice(RepairJob $job, float $service, float $parts, float $discount): ?JournalEntry
+    {
+        $total = round($service + $parts - $discount, 2);
+        if ($total <= 0) {
+            return null;
+        }
+
+        return $this->accounting->post([
+            'date'         => now()->toDateString(),
+            'event'        => 'repair_invoice',
+            'source'       => $job,
+            'reference_no' => $job->job_no,
+            'narration'    => "Repair invoice {$job->job_no} ({$job->device_model})" . ($job->status === RepairJob::CANCELLED ? ' - cancellation charge' : ''),
+            'branch_id'    => $job->branch_id,
+        ], [
+            ['account' => 'receivable', 'debit' => $total, 'party_type' => 'customer', 'party_id' => $job->customer_id],
+            ['account' => 'sales_discount', 'debit' => round($discount, 2), 'memo' => 'Repair discount'],
+            ['account' => 'repair_income', 'credit' => round($service, 2)],
+            ['account' => 'repair_parts_income', 'credit' => round($parts, 2)],
         ]);
     }
 

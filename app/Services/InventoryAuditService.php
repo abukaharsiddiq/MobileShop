@@ -54,7 +54,7 @@ class InventoryAuditService
 
         $issues[] = $this->issue('accessory_with_imei', 'Accessory with IMEI in stock', 'warning',
             ProductImei::with('product')->owned()
-                ->whereHas('product', fn ($q) => $q->where('type', 'accessory'))
+                ->whereHas('product', fn ($q) => $q->whereIn('type', Product::NON_DEVICE_TYPES))
                 ->get()->map(fn ($i) => "{$i->imei_no} ({$i->product->product_name})"));
 
         $issues[] = $this->issue('no_variant', 'IMEI without variant (main_stock_id missing)', 'warning',

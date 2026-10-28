@@ -662,6 +662,25 @@
         @endif
        <!--  ======== Warranty ========= -->
 
+       <!--  ======== Repair ========= -->
+        @if($user->role != 'admin' && auth()->user()->can('work repair'))
+            <li class="nav-item">
+                <a href="{{ route('repair.board') }}" class="nav-link {{ request()->routeIs('repair.board') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-clipboard-list"></i>
+                    <p>My Repair Board</p>
+                </a>
+            </li>
+        @endif
+        @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read repair', 'work repair']))
+            <li class="nav-item">
+                <a href="{{ route('repair.index') }}" class="nav-link {{ request()->routeIs('repair.*') && !request()->routeIs('repair.board') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-tools"></i>
+                    <p>Repair & Service</p>
+                </a>
+            </li>
+        @endif
+       <!--  ======== Repair ========= -->
+
        <!--  ======== Used Phones ========= -->
         @if($user->role == 'admin' || auth()->user()->can('read used phone'))
             <li class="nav-item">

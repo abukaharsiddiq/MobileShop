@@ -106,6 +106,10 @@ class PermissionSeeder extends Seeder
             ['create used phone', 'Used Phone'],      // purono phone kena: seller, IMEI, condition, inspection
             ['approve used phone', 'Used Phone'],     // kena approve/reject (stock e jay), refurbishment QC
             ['manage used phone', 'Used Phone'],      // refurbishment e pathano, khoroch, resale dam/warranty
+            ['read repair', 'Repair'],                // job list, details, print, report
+            ['create repair', 'Repair'],              // job card kholar, advance/payment, delivery
+            ['work repair', 'Repair'],                // technician: kaj shuru, part chaoa, kaj shesh
+            ['approve repair', 'Repair'],             // technician deya, part approve (stock kome), QC, cancel
         ]);
     }
 }

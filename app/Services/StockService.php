@@ -42,6 +42,8 @@ class StockService
     const WARRANTY_IN = 'warranty_in';             // warranty replacement: customer er nosto device dokane (damaged)
     const WARRANTY_OUT = 'warranty_out';           // warranty replacement: notun unit customer ke
     const USED_PURCHASE = 'used_purchase';         // purono phone kena (UsedPhoneService)
+    const REPAIR_PART = 'repair_part';             // repair e part lagano (approve hole)
+    const REPAIR_PART_RETURN = 'repair_part_return'; // part khule stock e ferot / job cancel
 
     const LABELS = [
         self::OPENING          => 'Opening Stock',
@@ -62,6 +64,8 @@ class StockService
         self::WARRANTY_IN      => 'Warranty Return (faulty)',
         self::WARRANTY_OUT     => 'Warranty Replacement',
         self::USED_PURCHASE    => 'Used Phone Purchase',
+        self::REPAIR_PART      => 'Repair Part Used',
+        self::REPAIR_PART_RETURN => 'Repair Part Returned',
     ];
 
     public function move(MainStock $stock, int $quantity, string $type, ?Model $reference = null, ?string $note = null,
@@ -227,6 +231,6 @@ class StockService
         }
 
         return $reference->invoice_no ?? $reference->return_no ?? $reference->adjustment_no ?? $reference->count_no
-            ?? $reference->intake_no ?? null;
+            ?? $reference->intake_no ?? $reference->job_no ?? null;
     }
 }
