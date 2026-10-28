@@ -6,7 +6,10 @@ use App\Models\ImeiMovement;
 use App\Models\Product;
 use App\Models\ProductImei;
 use App\Models\ProductImeiNumber;
+use App\Models\Purchase;
+use App\Models\PurchaseDetail;
 use App\Models\StockAdjustment;
+use App\Models\UsedPhone;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -37,6 +40,7 @@ class ImeiService
     const WARRANTY_RETURNED = 'warranty_returned';      // claim er por customer ke ferot
     const WARRANTY_REPLACED = 'warranty_replaced';      // nosto phone dokane (damaged), customer notun pelo
     const WARRANTY_REPLACEMENT = 'warranty_replacement'; // notun phone ta kon claim e deya holo
+    const USED_PURCHASE = 'used_purchase';              // purono phone kena (UsedPhoneService)
 
     // hate status bodlano (permission: manage imei): [from => [to => event]]
     const TRANSITIONS = [
@@ -161,6 +165,50 @@ class ImeiService
     }
 
     /**
+     * Onno draft/pending purchase invoice e eki IMEI thakle duijon eki phone kinte pare na.
+     */
+    public function assertNotInOpenPurchase(array $imeis, ?int $exceptPurchaseId = null): void
+    {
+        if (!$imeis) {
+            return;
+        }
+
+        $found = PurchaseDetail::query()
+            ->join('purchases', 'purchases.id', '=', 'purchase_details.purchase_id')
+            ->whereIn('purchases.status', [Purchase::STATUS_DRAFT, Purchase::STATUS_PENDING])
+            ->when($exceptPurchaseId, fn ($q) => $q->where('purchases.id', '!=', $exceptPurchaseId))
+            ->whereNotNull('purchase_details.imei_list')
+            ->select('purchase_details.imei_list', 'purchases.invoice_no')
+            ->get()
+            ->filter(fn ($row) => array_intersect(self::numbers(ProductImei::parseDevices($row->imei_list)), $imeis))
+            ->pluck('invoice_no')->unique();
+
+        if ($found->isNotEmpty()) {
+            throw new \Exception('These IMEI are already on another open purchase: ' . $found->implode(', '));
+        }
+    }
+
+    /**
+     * Approve er opekkhay thaka used phone intake e (IMEI 1 ba IMEI 2) eki number.
+     */
+    public function assertNotPendingUsedIntake(array $imeis, ?int $exceptUsedPhoneId = null): void
+    {
+        $imeis = array_values(array_filter($imeis));
+        if (!$imeis) {
+            return;
+        }
+
+        $pending = UsedPhone::where('status', UsedPhone::PENDING)
+            ->where(fn ($q) => $q->whereIn('imei_no', $imeis)->orWhereIn('imei_no_2', $imeis))
+            ->when($exceptUsedPhoneId, fn ($q) => $q->where('id', '!=', $exceptUsedPhoneId))
+            ->pluck('intake_no');
+
+        if ($pending->isNotEmpty()) {
+            throw new \Exception('These IMEI are already on a used phone intake waiting for approval: ' . $pending->implode(', '));
+        }
+    }
+
+    /**
      * Stock reconciliation e registration: IMEI ta amader record e age bikri/ferot hoye thakle
      * seta "puraton unregistered stock" hote pare na.
      */
@@ -197,7 +245,7 @@ class ImeiService
     // Purchase/registration: notun device stock e (available)
     public function register(Product $product, int $mainStockId, ?int $branchId, string $imei1, ?string $imei2, string $event,
                              ?Model $reference = null, ?string $note = null, ?int $supplierId = null, ?int $purchaseId = null,
-                             ?int $purchaseDetailId = null): ProductImei
+                             ?int $purchaseDetailId = null, ?int $customerId = null): ProductImei
     {
         $imei = ProductImei::create([
             'product_id'        => $product->id,
@@ -210,7 +258,7 @@ class ImeiService
             'status'            => ProductImei::STATUS_AVAILABLE,
             'status_changed_at' => now(),
         ]);
-        $this->record($imei, $event, $reference, $note, $supplierId);
+        $this->record($imei, $event, $reference, $note, $supplierId, $customerId);
 
         return $imei;
     }
@@ -305,7 +353,7 @@ class ImeiService
     /**
      * Hate status bodlano: reserve, repair e pathano/ferot, damaged, thik hoye available.
      */
-    public function changeStatus(ProductImei $imei, int $to, string $note, ?int $customerId = null): ProductImei
+    public function changeStatus(ProductImei $imei, int $to, string $note, ?int $customerId = null, ?Model $reference = null): ProductImei
     {
         $imei = ProductImei::lockForUpdate()->findOrFail($imei->id);
         $from = (int) $imei->status;
@@ -324,7 +372,7 @@ class ImeiService
             'status_note'          => $to === ProductImei::STATUS_AVAILABLE ? null : $note,
             'status_changed_at'    => now(),
         ]);
-        $this->record($imei, $event, null, $note, null, $to === ProductImei::STATUS_RESERVED ? $customerId : null);
+        $this->record($imei, $event, $reference, $note, null, $to === ProductImei::STATUS_RESERVED ? $customerId : null);
 
         return $imei;
     }

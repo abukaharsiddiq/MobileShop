@@ -333,26 +333,11 @@ class PurchaseService
         }
     }
 
-    // Onno draft/pending invoice e eki IMEI thakle duijon eki phone kinte pare na
+    // Onno open purchase ba approve er opekkhay thaka used phone intake e eki IMEI thakle duijon eki phone kinte pare na
     private function assertNotInOpenPurchase(array $numbers, ?int $exceptPurchaseId): void
     {
-        if (!$numbers) {
-            return;
-        }
-
-        $found = PurchaseDetail::query()
-            ->join('purchases', 'purchases.id', '=', 'purchase_details.purchase_id')
-            ->whereIn('purchases.status', [Purchase::STATUS_DRAFT, Purchase::STATUS_PENDING])
-            ->when($exceptPurchaseId, fn ($q) => $q->where('purchases.id', '!=', $exceptPurchaseId))
-            ->whereNotNull('purchase_details.imei_list')
-            ->select('purchase_details.imei_list', 'purchases.invoice_no')
-            ->get()
-            ->filter(fn ($row) => array_intersect(ImeiService::numbers(ProductImei::parseDevices($row->imei_list)), $numbers))
-            ->pluck('invoice_no')->unique();
-
-        if ($found->isNotEmpty()) {
-            throw new \Exception('These IMEI are already on another open purchase: ' . $found->implode(', '));
-        }
+        $this->imeis->assertNotInOpenPurchase($numbers, $exceptPurchaseId);
+        $this->imeis->assertNotPendingUsedIntake($numbers);
     }
 
     private function buildLines(array $items, ?int $exceptPurchaseId): array

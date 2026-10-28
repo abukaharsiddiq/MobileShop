@@ -20,6 +20,8 @@ use App\Models\StockAdjustment;
 use App\Models\StockMovement;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
+use App\Models\UsedPhone;
+use App\Models\UsedPhoneEvent;
 use Illuminate\Support\Str;
 
 /**
@@ -37,6 +39,8 @@ use Illuminate\Support\Str;
  *  Purchase         Dr Inventory (landed cost = grand total)         Cr Payable             (cancel hole reverse)
  *  Supplier payment Dr Payable                                       Cr Cash/Bank           (refund ulta; void hole reverse)
  *  Purchase return  Dr Payable                                       Cr Inventory +/- Purchase Return Price Difference
+ *  Used phone       Dr Inventory (kena dam)                          Cr Cash/Bank/Mobile    (seller ke nogod deya)
+ *  Refurbishment    Dr Inventory (khoroch phone er dam e jog)        Cr Cash/Bank/Mobile
  *  Stock adjustment Dr Inventory Adjustment (kom) / Inventory (beshi) Cr ulta; opening stock Cr Opening Balance Equity
  *  Expense          Dr Expense (category account)                    Cr Cash/Bank
  *  Income           Dr Cash/Bank                                     Cr Income account
@@ -285,6 +289,46 @@ class FinancePostingService
             ['account' => 'payable', 'debit' => $total, 'party_type' => 'supplier', 'party_id' => $return->supplier_id],
             ['account' => 'inventory', 'credit' => $inventoryValue, 'memo' => 'Returned goods'],
             ['account' => 'purchase_return_difference', 'credit' => max(0, $difference), 'debit' => max(0, -$difference)],
+        ]);
+    }
+
+    // ---- used phone ---------------------------------------------------------------------
+
+    // Seller ke deya taka (cash hole cashier er drawer theke)
+    public function postUsedPhonePurchase(UsedPhone $phone): JournalEntry
+    {
+        $money = Account::moneyFor($phone->account_id, $phone->payment_method);
+        UsedPhone::whereKey($phone->id)->update(['account_id' => $money->id]);
+        $cost = round((float) $phone->purchase_cost, 2);
+
+        return $this->accounting->post([
+            'date'         => $phone->purchase_date,
+            'event'        => 'used_phone_purchase',
+            'source'       => $phone,
+            'reference_no' => $phone->intake_no,
+            'narration'    => "Used phone {$phone->intake_no} bought from {$phone->seller_name} ({$phone->sourceLabel()}), IMEI {$phone->numbersLabel()}",
+            'branch_id'    => $phone->branch_id,
+        ], [
+            ['account' => 'inventory', 'debit' => $cost, 'memo' => 'Used phone'],
+            ['account' => $money, 'credit' => $cost],
+        ]);
+    }
+
+    // Refurbishment er khoroch phone er dam e (inventory) jog hoy
+    public function postUsedPhoneRefurbishment(UsedPhone $phone, UsedPhoneEvent $cost, Account $money): JournalEntry
+    {
+        $amount = round((float) $cost->amount, 2);
+
+        return $this->accounting->post([
+            'date'         => now()->toDateString(),
+            'event'        => 'used_phone_refurbishment',
+            'source'       => $cost,
+            'reference_no' => $phone->intake_no,
+            'narration'    => "Refurbishment of {$phone->intake_no} (IMEI {$phone->imei_no})" . ($cost->note ? ": {$cost->note}" : ''),
+            'branch_id'    => $phone->branch_id,
+        ], [
+            ['account' => 'inventory', 'debit' => $amount, 'memo' => 'Refurbishment cost'],
+            ['account' => $money, 'credit' => $amount],
         ]);
     }
 

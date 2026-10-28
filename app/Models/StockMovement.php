@@ -54,6 +54,7 @@ class StockMovement extends Model
             'SaleReturn'      => 'sale-return.show',
             'StockAdjustment' => 'stock-reconciliation.show',
             'StockCount'      => 'stock-count.show',
+            'UsedPhone'       => 'used-phone.show',
         ];
         $route = $routes[$this->reference_type] ?? null;
 

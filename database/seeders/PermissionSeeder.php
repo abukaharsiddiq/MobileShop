@@ -102,6 +102,10 @@ class PermissionSeeder extends Seeder
             ['read warranty', 'Warranty'],            // lookup, list, report, expiry reminder
             ['create warranty claim', 'Warranty'],    // customer er device claim e jama, ferot deya
             ['manage warranty claim', 'Warranty'],    // inspection, repair/brand, resolve (replacement shoho)
+            ['read used phone', 'Used Phone'],        // list, details, IMEI itihash, margin
+            ['create used phone', 'Used Phone'],      // purono phone kena: seller, IMEI, condition, inspection
+            ['approve used phone', 'Used Phone'],     // kena approve/reject (stock e jay), refurbishment QC
+            ['manage used phone', 'Used Phone'],      // refurbishment e pathano, khoroch, resale dam/warranty
         ]);
     }
 }

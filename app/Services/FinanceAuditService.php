@@ -86,6 +86,8 @@ class FinanceAuditService
             ->merge($missing('sale_returns', 'SaleReturn', ['sale_return'], 'Sale return', 'return_no', fn ($q) => $q->where('status', 'completed')))
             ->merge($missing('purchase_returns', 'PurchaseReturn', ['purchase_return'], 'Purchase return', 'return_no'))
             ->merge($missing('expenses', 'Expense', ['expense'], 'Expense', 'id', fn ($q) => $q->where('status', 'posted')))
+            ->merge($missing('used_phones', 'UsedPhone', ['used_phone_purchase'], 'Used phone', 'intake_no', fn ($q) => $q->whereIn('status', ['refurbishing', 'in_stock'])))
+            ->merge($missing('used_phone_events', 'UsedPhoneEvent', ['used_phone_refurbishment'], 'Refurbishment cost', 'id', fn ($q) => $q->where('event', 'cost')))
             ->all();
 
         return ['severity' => 'warning', 'title' => 'Documents not posted to the journal (run finance:backfill)', 'rows' => $rows];

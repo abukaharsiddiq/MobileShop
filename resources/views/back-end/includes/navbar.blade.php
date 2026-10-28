@@ -662,6 +662,17 @@
         @endif
        <!--  ======== Warranty ========= -->
 
+       <!--  ======== Used Phones ========= -->
+        @if($user->role == 'admin' || auth()->user()->can('read used phone'))
+            <li class="nav-item">
+                <a href="{{ route('used-phone.index') }}" class="nav-link {{ request()->routeIs('used-phone.*') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-recycle"></i>
+                    <p>Used Phones</p>
+                </a>
+            </li>
+        @endif
+       <!--  ======== Used Phones ========= -->
+
        <!--  ======== Cash Closing ========= -->
         @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['open cash session', 'read cash closing']))
             <li class="nav-item">

@@ -501,7 +501,9 @@
             if (data.length > 0) {
                 $.each(data, function(i, item) {
                     // text hisebe (IMEI 2 / reserved shoho)
-                    imeiSelect.append(new Option(item.label || item.imei_no, item.id));
+                    let option = new Option(item.label || item.imei_no, item.id);
+                    if (item.price) $(option).attr('data-price', item.price);   // used phone er resale dam
+                    imeiSelect.append(option);
                 });
                 tr.find('.imei-div').show();
                 tr.find('.qty').attr('readonly', true).val(0);
@@ -518,6 +520,9 @@
     function updateQty(select) {
         let tr = $(select).closest('tr');
         tr.find('.qty').val($(select).val() ? $(select).val().length : 0);
+        // ekta used phone bachai korle tar nijer resale dam
+        let picked = $(select).find('option:selected');
+        if (picked.length === 1 && picked.data('price')) tr.find('.sale_price').val(picked.data('price'));
         calculateRow(tr.find('.qty'));
     }
 
