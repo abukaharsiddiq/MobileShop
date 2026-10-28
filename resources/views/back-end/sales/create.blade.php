@@ -112,6 +112,20 @@
                             </div>
                         </div>
 
+                        <!-- Extra branches -->
+                        <div class="form-group row">
+                            <label class="col-sm-3 col-form-label text-end">Also works at</label>
+                            <div class="col-sm-9">
+                                <select name="extra_branch_ids[]" class="form-control select2bs4" multiple data-placeholder="Other branches / warehouses (optional)">
+                                    @foreach($branches as $branch)
+                                        <option value="{{ $branch->id }}" @selected(in_array($branch->id, old('extra_branch_ids', $extraIds ?? [])))>{{ $branch->name }}{{ $branch->isWarehouse() ? ' (warehouse)' : '' }}</option>
+                                    @endforeach
+                                </select>
+                                <small class="text-muted">The user can see and work with stock of these branches too.</small>
+                            </div>
+                        </div>
+
+
                     </div>
                 </div>
 

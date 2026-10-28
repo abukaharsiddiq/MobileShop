@@ -30,6 +30,8 @@ use App\Http\Controllers\CashClosingController;
 use App\Http\Controllers\WarrantyController;
 use App\Http\Controllers\UsedPhoneController;
 use App\Http\Controllers\RepairController;
+use App\Http\Controllers\StockTransferController;
+use App\Http\Controllers\BranchReportController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -547,6 +549,27 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/cancel/{id}', [RepairController::class, 'cancel'])->name('cancel')->middleware('can:approve repair');
     });
     /* repair */
+
+    /* stock transfer: dekha (read), request (create), approve/reject/missing (approve), dispatch/receive (process; nijer branch) */
+    Route::prefix('transfer')->name('transfer.')->group(function () {
+        Route::get('/', [StockTransferController::class, 'index'])->name('index')->middleware('can:read transfer');
+        Route::get('/create', [StockTransferController::class, 'create'])->name('create')->middleware('can:create transfer');
+        Route::post('/store', [StockTransferController::class, 'store'])->name('store')->middleware('can:create transfer');
+        Route::get('/available', [StockTransferController::class, 'available'])->name('available')->middleware('can:create transfer');
+        Route::get('/show/{id}', [StockTransferController::class, 'show'])->name('show')->middleware('can:read transfer');
+        Route::get('/print/{id}', [StockTransferController::class, 'print'])->name('print')->middleware('can:read transfer');
+        Route::post('/approve/{id}', [StockTransferController::class, 'approve'])->name('approve')->middleware('can:approve transfer');
+        Route::post('/reject/{id}', [StockTransferController::class, 'reject'])->name('reject')->middleware('can:approve transfer');
+        Route::post('/cancel/{id}', [StockTransferController::class, 'cancel'])->name('cancel')->middleware('permission:create transfer|approve transfer');
+        Route::post('/dispatch/{id}', [StockTransferController::class, 'dispatch'])->name('dispatch')->middleware('can:process transfer');
+        Route::post('/receive/{id}', [StockTransferController::class, 'receive'])->name('receive')->middleware('can:process transfer');
+        Route::post('/missing/{id}', [StockTransferController::class, 'missing'])->name('missing')->middleware('can:approve transfer');
+    });
+    /* stock transfer */
+
+    /* branch report: purchase/sales/expense/labh (read branch report), branch-wise stock (read stock report) - nijer branch */
+    Route::get('/branch-report', [BranchReportController::class, 'summary'])->name('branch-report.summary')->middleware('can:read branch report');
+    Route::get('/branch-report/stock', [BranchReportController::class, 'stock'])->name('branch-report.stock')->middleware('can:read stock report');
 
     /* daily cash closing: cashier nijer session; 'read cash closing' shob; 'approve cash closing' review */
     Route::prefix('cash-closing')->name('cash-closing.')->group(function () {

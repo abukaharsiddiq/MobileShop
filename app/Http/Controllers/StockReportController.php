@@ -66,7 +66,7 @@ public function DeadStockReport(Request $request)
         if ($request->color_id) $query->where('color_id', $request->color_id);
 
         $stocks = $query->get();
-        $branchId = $request->integer('branch_id') ?: null;
+        $branchId = $this->branchFilter($request);
         $this->attachBranchFigures($stocks, $branchId);
 
         if ($request->status) {
@@ -84,7 +84,7 @@ public function DeadStockReport(Request $request)
         $rams       = Ram::all();
         $roms       = Rom::all();
         $colors     = Color::all();
-        $branches   = Branch::orderBy('name')->get();
+        $branches   = Branch::accessibleBy($request->user())->orderBy('name')->get();
 
         $totalStockValue = $stocks->sum(fn ($stock) => max(0, $stock->display_qty) * $stock->average_purchase_price);
 
@@ -104,10 +104,11 @@ public function DeadStockReport(Request $request)
         $name = $this->heading;
         $title = 'Stock Ledger';
         $default = (int) Branch::where('is_default', 1)->value('id');
+        $branchId = $this->branchFilter($request);
 
         $filter = fn ($q) => $q
             ->when($request->main_stock_id, fn ($w, $id) => $w->where('main_stock_id', $id))
-            ->when($request->branch_id, fn ($w, $id) => $w->whereRaw("COALESCE(branch_id, {$default}) = ?", [$id]))
+            ->when($branchId, fn ($w, $id) => $w->whereRaw("COALESCE(branch_id, {$default}) = ?", [$id]))
             ->when($request->type, fn ($w, $type) => $w->where('type', $type));
 
         // tarikh er ager jogfol (variant/branch dile running balance er shuru)
@@ -129,7 +130,7 @@ public function DeadStockReport(Request $request)
         }
 
         $stocks = MainStock::with(['product', 'ram', 'rom', 'color'])->get();
-        $branches = Branch::orderBy('name')->get();
+        $branches = Branch::accessibleBy($request->user())->orderBy('name')->get();
 
         return view('back-end.reports.stock_ledger', compact('name', 'title', 'movements', 'opening', 'stocks', 'branches'));
     }
@@ -142,7 +143,7 @@ public function DeadStockReport(Request $request)
         $title = 'Stock Valuation';
 
         $stocks = MainStock::with(['product.category', 'ram', 'rom', 'color'])->get();
-        $this->attachBranchFigures($stocks, $request->integer('branch_id') ?: null);
+        $this->attachBranchFigures($stocks, $this->branchFilter($request));
         $stocks = $stocks->filter(fn ($s) => $s->display_qty != 0);
 
         $groups = $stocks->groupBy(fn ($s) => $s->product?->category?->name ?? 'Uncategorised')
@@ -155,7 +156,7 @@ public function DeadStockReport(Request $request)
         // damaged/lost (adjustment e lekha) - ei somoye mullo shoho
         $writeOffs = StockMovement::whereIn('type', [StockService::DAMAGED, StockService::LOST])
             ->select('type', DB::raw('SUM(-quantity) as qty'))->groupBy('type')->pluck('qty', 'type');
-        $branches = Branch::orderBy('name')->get();
+        $branches = Branch::accessibleBy($request->user())->orderBy('name')->get();
 
         return view('back-end.reports.stock_valuation', compact('name', 'title', 'groups', 'branches', 'writeOffs'));
     }
@@ -168,10 +169,10 @@ public function DeadStockReport(Request $request)
         $title = 'Low Stock Alert';
 
         $stocks = MainStock::with(['product.category', 'ram', 'rom', 'color'])->active()->get();
-        $this->attachBranchFigures($stocks, $request->integer('branch_id') ?: null);
+        $this->attachBranchFigures($stocks, $this->branchFilter($request));
         $stocks = $stocks->filter(fn ($s) => $s->display_qty <= $s->lowStockThreshold())
             ->sortBy('display_qty')->values();
-        $branches = Branch::orderBy('name')->get();
+        $branches = Branch::accessibleBy($request->user())->orderBy('name')->get();
 
         return view('back-end.reports.low_stock', compact('name', 'title', 'stocks', 'branches'));
     }
@@ -180,6 +181,22 @@ public function DeadStockReport(Request $request)
     public static function lowStockCount(): int
     {
         return MainStock::active()->whereRaw('main_stocks.quantity <= ' . MainStock::thresholdSql())->count();
+    }
+
+    /**
+     * Report er branch: onno branch er stock dekha jay na (403). Shob branch er access na thakle branch na bachaile
+     * nijer (mul) branch - mot company stock na.
+     */
+    private function branchFilter(Request $request): ?int
+    {
+        $user = $request->user();
+        $id = $request->integer('branch_id') ?: null;
+        if ($id) {
+            abort_unless($user->canAccessBranch($id), 403, 'You cannot see the stock of this branch.');
+            return $id;
+        }
+
+        return $user->canAccessAllBranches() ? null : (int) $user->branch_id;
     }
 
     /**

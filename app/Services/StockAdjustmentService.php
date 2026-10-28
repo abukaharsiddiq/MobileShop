@@ -60,7 +60,9 @@ class StockAdjustmentService
                 $this->imeiService->assertNotPendingRegistration($numbers);
                 $this->imeiService->assertNotPendingUsedIntake($numbers);
             } elseif ($data['type'] === StockAdjustment::TYPE_TRANSFER) {
-                $toBranchId = (int) Branch::where('status', 1)->findOrFail($data['to_branch_id'] ?? 0)->id;
+                // active branch/warehouse ("In Transit" system location na)
+                $toBranchId = (int) Branch::where('status', 1)->whereKey($data['to_branch_id'] ?? 0)->value('id')
+                    ?: throw new \Exception('Choose an active branch or warehouse to transfer to.');
                 [$quantity, $imeis] = $this->validateTransfer($stock, $branch->id, $toBranchId, (int) ($data['quantity'] ?? 0),
                     ProductImei::parseList($data['imeis'] ?? ''), false);
             } else {
@@ -282,6 +284,10 @@ class StockAdjustmentService
         $label = $stock->variantLabel();
         if (!$toBranchId || $toBranchId === $fromBranchId) {
             throw new \Exception('Choose a different branch to transfer to.');
+        }
+        // "In Transit" system location e hate pathano jay na (Stock Transfer er dispatch/receive chara)
+        if (!\App\Models\Branch::whereKey($toBranchId)->exists()) {
+            throw new \Exception('Choose a branch or warehouse to transfer to.');
         }
 
         $usesImei = $stock->product->requiresImei() || self::activeImeiCount($stock) > 0;

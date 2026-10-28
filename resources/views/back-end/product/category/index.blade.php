@@ -26,7 +26,7 @@
 <div class="card">
   <div class="card-header">
                       <h1 class="card-title">Manage {{ $name }}</h1>
-                      <a href="{{ route('branch.create') }}" class="btn btn-sm back-btn">
+                      <a href="{{ route('category.create') }}" class="btn btn-sm back-btn">
                          <i class="fa fa-plus"></i> Add New 
                       </a>
                     </div>

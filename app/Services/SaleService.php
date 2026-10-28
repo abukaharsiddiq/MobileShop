@@ -184,6 +184,7 @@ class SaleService
         $creditUsed = round(array_sum(array_column(array_filter($payments, fn ($p) => $p['channel'] === 'credit'), 'amount')), 2);
 
         $branchId = count(array_unique($branches)) === 1 ? (int) reset($branches) : Branch::currentId();
+        $this->assertBranchStock($lines, $branchId);
         $sale->fill([
             'branch_id'              => $branchId,
             'subtotal'               => $subtotal,
@@ -360,6 +361,39 @@ class SaleService
             ['status' => Sale::STATUS_CANCELLED, 'reason' => $reason, 'refund' => $paid, 'refund_method' => $refundMethod]);
 
         return $sale;
+    }
+
+    /**
+     * Warehouse theke POS e bikri na (transfer kore branch e); IMEI chara line e oi branch er ledger e
+     * jotota ache tar beshi na (config inventory.enforce_branch_stock; negative stock chalu thakle na).
+     */
+    private function assertBranchStock(array $lines, ?int $saleBranchId): void
+    {
+        $branchOf = fn (array $line) => ($b = $line['devices']->pluck('branch_id')->filter()->unique())->count() === 1 ? (int) $b->first() : $saleBranchId;
+
+        $used = array_filter(array_unique(array_map($branchOf, $lines)));
+        $warehouse = Branch::whereIn('id', $used ?: [0])->where('type', Branch::WAREHOUSE)->value('name');
+        if ($warehouse) {
+            throw new \Exception("{$warehouse} is a warehouse; transfer the stock to a branch before selling it.");
+        }
+        if (!config('inventory.enforce_branch_stock') || !$saleBranchId) {
+            return;
+        }
+
+        $need = [];
+        foreach ($lines as $line) {
+            if ($line['devices']->isEmpty() && !StockService::allowsNegative($line['stock'])) {
+                $need[$line['stock']->id] = ($need[$line['stock']->id] ?? 0) + $line['qty'];
+            }
+        }
+        $balances = $need ? StockService::branchBalances(array_keys($need), $saleBranchId) : collect();
+        foreach ($need as $stockId => $qty) {
+            $here = (int) $balances->get($stockId . ':' . $saleBranchId, 0);
+            if ($qty > $here) {
+                $line = collect($lines)->first(fn ($l) => $l['stock']->id === $stockId);
+                throw new \Exception("Not enough stock of {$line['stock']->variantLabel()} in this branch. Available here: {$here}, requested: {$qty}. Transfer stock from another branch first.");
+            }
+        }
     }
 
     /**

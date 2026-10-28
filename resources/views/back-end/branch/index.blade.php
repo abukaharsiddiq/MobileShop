@@ -41,6 +41,7 @@
                         <tr>
                           <th>SN</th>
                           <th>Name</th>
+                          <th>Type</th>
                           <th>Email</th>
                           <th>Phone</th>
                           <th>Address</th>
@@ -57,6 +58,7 @@
                         <tr>
                           <td>{{ $i++ }}</td>
                           <td>{{ $info->name }}</td>
+                          <td><span class="badge badge-{{ $info->isWarehouse() ? 'warning' : 'info' }}">{{ $info->typeLabel() }}</span></td>
                           <td>{{ $info->email }}</td>
                           <td>{{ $info->phone }}</td>
                           <td>{{ $info->address }}</td>

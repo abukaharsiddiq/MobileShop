@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Branch;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Brian2694\Toastr\Facades\Toastr;
@@ -28,7 +29,8 @@ class BranchController extends Controller
     public function create(){
         $title= $this->heading;
         $name=$this->heading;
-        return view('back-end.branch.create', compact('title', 'name'));
+        $managers = $this->managers();
+        return view('back-end.branch.create', compact('title', 'name', 'managers'));
     }
 
     public function store(Request $request){
@@ -47,7 +49,8 @@ class BranchController extends Controller
         $title='Branch Edit';
         $name='Branch';
         $branch = Branch::findOrFail($id);
-        return view('back-end.branch.edit', compact('branch', 'title', 'name'));
+        $managers = $this->managers();
+        return view('back-end.branch.edit', compact('branch', 'title', 'name', 'managers'));
     }
 
     public function update(Request $request)
@@ -86,6 +89,11 @@ class BranchController extends Controller
             }
         }
 
+        if (DB::table('stock_transfers')->where('from_branch_id', $branch->id)->orWhere('to_branch_id', $branch->id)->exists()) {
+            Toastr::error('This branch is used in stock transfers and cannot be deleted. Set it to Inactive instead.', 'Error');
+            return redirect()->route('branch.index');
+        }
+
         DB::transaction(function () use ($branch) {
             $branch->delete();
             $this->keepSingleDefault(null);
@@ -107,7 +115,13 @@ class BranchController extends Controller
             'branch_email'   => 'nullable|email|max:255',
             'branch_phone'   => 'required|string|max:50',
             'branch_address' => 'required|string|max:255',
+            'branch_type'    => 'nullable|in:' . implode(',', array_keys(Branch::TYPES)),
+            'manager_id'     => 'nullable|exists:users,id',
         ]);
+        // default branch (branch chara user/purono stock) e POS bikri hoy, tai warehouse na
+        if ($request->boolean('is_default') && $request->branch_type === Branch::WAREHOUSE) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['branch_type' => 'The default branch cannot be a warehouse.']);
+        }
 
         return [
             'name'       => $request->branch_name,
@@ -115,8 +129,15 @@ class BranchController extends Controller
             'email'      => $request->branch_email,
             'phone'      => $request->branch_phone,
             'address'    => $request->branch_address,
+            'type'       => $request->branch_type ?: Branch::BRANCH,
+            'manager_id' => $request->manager_id ?: null,
             'is_default' => $request->boolean('is_default'),
         ];
+    }
+
+    private function managers()
+    {
+        return User::where('status', 1)->orderBy('name')->get(['id', 'name', 'role']);
     }
 
     // Ekta-i default branch thakbe; kono default na thakle prothom active branch default hobe

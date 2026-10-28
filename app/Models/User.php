@@ -76,23 +76,41 @@ class User extends Authenticatable
 
     /**
      * Branch access: admin, 'access all branches' permission ache, ba kono branch e bandha na
-     * (branch_id NULL) hole shob branch. Na hole shudhu nijer branch.
+     * (branch_id NULL) hole shob branch. Na hole nijer branch ar je branch gulo deya ache (branch_user).
      */
     public function canAccessAllBranches(): bool
     {
         return $this->isAdmin() || !$this->branch_id || $this->can('access all branches');
     }
 
+    // mul branch chara aro je branch/warehouse e kaj kore
+    public function extraBranches()
+    {
+        return $this->belongsToMany(Branch::class, 'branch_user');
+    }
+
+    private ?array $branchIdsCache = null;
+
     // null = shob branch
     public function allowedBranchIds(): ?array
     {
-        return $this->canAccessAllBranches() ? null : [(int) $this->branch_id];
+        if ($this->canAccessAllBranches()) {
+            return null;
+        }
+
+        return $this->branchIdsCache ??= array_values(array_unique(array_map('intval', array_merge(
+            [$this->branch_id], $this->extraBranches()->pluck('branches.id')->all()))));
     }
 
     // Branch chara (purono) record shobai dekhte pare, jate legacy stock atke na jay
     public function canAccessBranch(?int $branchId): bool
     {
-        return $branchId === null || $this->canAccessAllBranches() || (int) $this->branch_id === $branchId;
+        return $branchId === null || $this->canAccessAllBranches() || in_array((int) $branchId, $this->allowedBranchIds(), true);
+    }
+
+    public function forgetBranchAccess(): void
+    {
+        $this->branchIdsCache = null;
     }
 
 }

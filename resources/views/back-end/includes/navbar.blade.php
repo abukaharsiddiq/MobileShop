@@ -662,6 +662,37 @@
         @endif
        <!--  ======== Warranty ========= -->
 
+       <!--  ======== Branch & Warehouse ========= -->
+        @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read transfer', 'read branch report', 'read stock report']))
+            <li class="nav-item {{ request()->routeIs('transfer.*', 'branch-report.*', 'branch.*') ? 'menu-open' : '' }}">
+                <a href="#" class="nav-link {{ request()->routeIs('transfer.*', 'branch-report.*', 'branch.*') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-warehouse"></i>
+                    <p>Branch & Warehouse <i class="fas fa-angle-left right"></i></p>
+                </a>
+                <ul class="nav nav-treeview">
+                    @if($user->role == 'admin')
+                        <li class="nav-item"><a href="{{ route('branch.index') }}" class="nav-link {{ request()->routeIs('branch.index', 'branch.edit') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>All Branches / Warehouses</p></a></li>
+                        <li class="nav-item"><a href="{{ route('branch.create') }}" class="nav-link {{ request()->routeIs('branch.create') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Add Branch / Warehouse</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->can('read transfer'))
+                        <li class="nav-item"><a href="{{ route('transfer.index') }}" class="nav-link {{ request()->routeIs('transfer.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Stock Transfers</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->can('read stock report'))
+                        <li class="nav-item"><a href="{{ route('branch-report.stock') }}" class="nav-link {{ request()->routeIs('branch-report.stock') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Branch-wise Stock</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->can('read branch report'))
+                        <li class="nav-item"><a href="{{ route('branch-report.summary') }}" class="nav-link {{ request()->routeIs('branch-report.summary') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Branch Report</p></a></li>
+                    @endif
+                </ul>
+            </li>
+        @endif
+       <!--  ======== Branch & Warehouse ========= -->
+
        <!--  ======== Repair ========= -->
         @if($user->role != 'admin' && auth()->user()->can('work repair'))
             <li class="nav-item">

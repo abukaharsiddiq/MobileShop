@@ -21,6 +21,12 @@ return [
     */
     'allow_negative_stock' => (bool) env('ALLOW_NEGATIVE_STOCK', false),
 
+    /*
+    | Branch er stock: true hole IMEI chara (accessory) bikri oi branch er stock theke-i (onno branch/warehouse
+    | e thakle transfer korte hobe). IMEI wala phone shob shomoy tar nijer branch theke bikri hoy.
+    */
+    'enforce_branch_stock' => (bool) env('ENFORCE_BRANCH_STOCK', true),
+
     // product unit (form er select ar validation)
     'units' => ['pcs', 'box', 'set', 'pair', 'pack'],
 
