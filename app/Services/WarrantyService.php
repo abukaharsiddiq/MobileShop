@@ -11,6 +11,7 @@ use App\Models\Sale;
 use App\Models\SaleDetail;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
+use App\Models\UsedPhone;
 use App\Models\User;
 use App\Models\Warranty;
 use App\Models\WarrantyClaim;
@@ -51,7 +52,7 @@ class WarrantyService
 
             // protiti device er shop tarpor brand
             foreach ($units as $device) {
-                foreach ($this->durations($detail->product) as $type => $months) {
+                foreach ($this->durations($detail->product, $device) as $type => $months) {
                     $created += $this->create($sale, $detail, $type, $months, Carbon::parse($sale->sale_date), $device,
                         $device ? 1 : (int) $detail->quantity) ? 1 : 0;
                 }
@@ -61,10 +62,17 @@ class WarrantyService
         return $created;
     }
 
-    /** @return array<string, int> [type => months] - 0/null hole oi warranty nei */
-    public function durations(Product $product): array
+    /**
+     * @return array<string, int> [type => months] - 0/null hole oi warranty nei.
+     * Used/refurbished phone e intake er nijer warranty policy (thakle) product er default er bodole.
+     */
+    public function durations(Product $product, ?ProductImei $device = null): array
     {
         $shop = $product->warranty_months ?? (config('warranty.shop_defaults')[$product->type] ?? null);
+        if ($device && $product->isSecondHand()) {
+            $policy = UsedPhone::where('product_imei_id', $device->id)->whereNotNull('warranty_months')->value('warranty_months');
+            $shop = $policy ?? $shop;
+        }
 
         return array_filter([Warranty::SHOP => (int) $shop, Warranty::BRAND => (int) $product->brand_warranty_months]);
     }

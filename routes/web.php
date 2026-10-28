@@ -28,6 +28,7 @@ use App\Http\Controllers\JournalController;
 use App\Http\Controllers\PaymentVoucherController;
 use App\Http\Controllers\CashClosingController;
 use App\Http\Controllers\WarrantyController;
+use App\Http\Controllers\UsedPhoneController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -504,6 +505,22 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/claims/deliver/{id}', [WarrantyController::class, 'deliver'])->name('claims.deliver')->middleware('permission:manage warranty claim|create warranty claim');
     });
     /* warranty */
+
+    /* used & refurbished phone: dekha (read), kena/inspection (create), approve/QC (approve), refurbishment/dam (manage) */
+    Route::prefix('used-phone')->name('used-phone.')->group(function () {
+        Route::get('/', [UsedPhoneController::class, 'index'])->name('index')->middleware('can:read used phone');
+        Route::get('/create', [UsedPhoneController::class, 'create'])->name('create')->middleware('can:create used phone');
+        Route::post('/store', [UsedPhoneController::class, 'store'])->name('store')->middleware('can:create used phone');
+        Route::get('/check-imei', [UsedPhoneController::class, 'checkImei'])->name('check-imei')->middleware('can:create used phone');
+        Route::get('/show/{id}', [UsedPhoneController::class, 'show'])->name('show')->middleware('can:read used phone');
+        Route::post('/approve/{id}', [UsedPhoneController::class, 'approve'])->name('approve')->middleware('can:approve used phone');
+        Route::post('/reject/{id}', [UsedPhoneController::class, 'reject'])->name('reject')->middleware('can:approve used phone');
+        Route::post('/refurbish/{id}', [UsedPhoneController::class, 'refurbish'])->name('refurbish')->middleware('can:manage used phone');
+        Route::post('/cost/{id}', [UsedPhoneController::class, 'cost'])->name('cost')->middleware('can:manage used phone');
+        Route::post('/qc/{id}', [UsedPhoneController::class, 'qc'])->name('qc')->middleware('can:approve used phone');
+        Route::post('/pricing/{id}', [UsedPhoneController::class, 'pricing'])->name('pricing')->middleware('can:manage used phone');
+    });
+    /* used & refurbished phone */
 
     /* daily cash closing: cashier nijer session; 'read cash closing' shob; 'approve cash closing' review */
     Route::prefix('cash-closing')->name('cash-closing.')->group(function () {

@@ -43,6 +43,7 @@ return [
             'read accounts', 'create income', 'read finance report',
             'open cash session', 'read cash closing', 'approve cash closing',
             'read warranty', 'create warranty claim', 'manage warranty claim',
+            'read used phone', 'create used phone', 'approve used phone', 'manage used phone',
         ],
     ],
 
@@ -58,6 +59,7 @@ return [
             'search imei',
             'open cash session',
             'read warranty', 'create warranty claim',
+            'read used phone', 'create used phone',
         ],
     ],
 
@@ -75,6 +77,7 @@ return [
             'reverse transaction', 'reconcile account', 'read finance report',
             'open cash session', 'read cash closing', 'approve cash closing',
             'read warranty',
+            'read used phone',
         ],
     ],
 
@@ -86,6 +89,7 @@ return [
             'read stock report', 'search imei', 'manage imei',   // repair e pathano/ferot
             'read stock adjustment', 'create stock adjustment',
             'read warranty', 'create warranty claim', 'manage warranty claim',
+            'read used phone', 'manage used phone',   // refurbishment kaj ar khoroch
         ],
     ],
 

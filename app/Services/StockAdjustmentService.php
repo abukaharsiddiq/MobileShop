@@ -45,6 +45,7 @@ class StockAdjustmentService
                 $imeis = ProductImei::parseList($data['imeis'] ?? '');
                 $numbers = $this->validateRegistration($stock, $imeis, $data['verified_model_number'] ?? '');
                 $this->imeiService->assertNotPendingRegistration($numbers);
+                $this->imeiService->assertNotPendingUsedIntake($numbers);
                 $quantity = count($imeis);
             } elseif ($data['type'] === StockAdjustment::TYPE_IMEI_WRITE_OFF) {
                 // haralo/churi/nosto phone: IMEI 1 ba IMEI 2 diye; stock e IMEI 1 rakha hoy
@@ -57,6 +58,7 @@ class StockAdjustmentService
                 $unitCost = round((float) ($data['unit_cost'] ?? -1), 2);
                 $numbers = $this->validateOpening($stock, $quantity, $unitCost, $imeis ?? []);
                 $this->imeiService->assertNotPendingRegistration($numbers);
+                $this->imeiService->assertNotPendingUsedIntake($numbers);
             } elseif ($data['type'] === StockAdjustment::TYPE_TRANSFER) {
                 $toBranchId = (int) Branch::where('status', 1)->findOrFail($data['to_branch_id'] ?? 0)->id;
                 [$quantity, $imeis] = $this->validateTransfer($stock, $branch->id, $toBranchId, (int) ($data['quantity'] ?? 0),

@@ -106,6 +106,11 @@ class ImeiController extends Controller
             'status.in' => 'This status change is not allowed for a phone that is ' . $imei->statusText() . '.',
         ]);
 
+        // refurbishment e thaka used phone er status Used Phones theke (QC) bodlay
+        if (\App\Models\UsedPhone::where('product_imei_id', $imei->id)->where('status', \App\Models\UsedPhone::REFURBISHING)->exists()) {
+            return back()->with('error', "IMEI {$imei->imei_no} is in used phone refurbishment. Finish it from Used Phones (QC).");
+        }
+
         try {
             DB::transaction(fn () => $this->imeiService->changeStatus($imei, (int) $request->status, $request->note,
                 $request->customer_id ? (int) $request->customer_id : null));

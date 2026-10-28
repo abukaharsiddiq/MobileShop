@@ -267,12 +267,17 @@ public function getAvailableImeis($stock_id)
                 ->whereIn('status', [ProductImei::STATUS_AVAILABLE, ProductImei::STATUS_RESERVED])
                 ->accessibleBy(request()->user())
                 ->orderBy('status')
-                ->get()
-                ->map(fn ($i) => [
+                ->get();
+    // used/refurbished phone er nijer resale dam ar grade (POS e dam bose)
+    $used = \App\Models\UsedPhone::whereIn('product_imei_id', $imeis->pluck('id'))->get()->keyBy('product_imei_id');
+    $imeis = $imeis->map(fn ($i) => [
                     'id'      => $i->id,
                     'imei_no' => $i->imei_no,
+                    'price'   => isset($used[$i->id]) && $used[$i->id]->resale_price !== null ? (float) $used[$i->id]->resale_price : null,
                     'label'   => $i->numbersLabel() . ((int) $i->status === ProductImei::STATUS_RESERVED
-                        ? ' (reserved: ' . ($i->reservedCustomer->name ?? 'customer') . ')' : ''),
+                        ? ' (reserved: ' . ($i->reservedCustomer->name ?? 'customer') . ')' : '')
+                        . (isset($used[$i->id]) ? ' - grade ' . $used[$i->id]->condition_grade
+                            . ($used[$i->id]->resale_price !== null ? ', ' . number_format((float) $used[$i->id]->resale_price, 0) : '') : ''),
                 ]);
 
     return response()->json($imeis);
@@ -459,7 +464,8 @@ public function findByImei($imei_no)
             'stock_id' => $imei->main_stock_id,
             'product_id' => $imei->product_id,
             'imei_id' => $imei->id,
-            'price' => $imei->product->sale_price // যদি প্রাইস পাঠাতে চান
+            // used phone hole tar resale dam, na hole product er
+            'price' => \App\Models\UsedPhone::where('product_imei_id', $imei->id)->value('resale_price') ?? $imei->product->sale_price
         ]);
     }
 
