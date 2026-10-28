@@ -56,7 +56,7 @@
                             <table class="table table-bordered table-striped mt-3">
                                 <thead class="text-center bg-light">
                                     <tr>
-                                        @if(auth()->user()->role == 'admin') <th>User</th> @endif
+                                        @if(auth()->user()->isAdmin() || auth()->user()->can('read staff')) <th>User</th> @endif
                                         <th>Photo</th>
                                         <th>Date</th>
                                         <th>Clock In</th>
@@ -68,7 +68,7 @@
                                 <tbody class="text-center">
                                     @forelse($attendances as $row)
                                     <tr>
-                                        @if(auth()->user()->role == 'admin') <td>{{ $row->user->name }}</td> @endif
+                                        @if(auth()->user()->isAdmin() || auth()->user()->can('read staff')) <td>{{ $row->user->name }}</td> @endif
                                         <td>
                                             @if($row->image)
                                                 <img src="{{ asset($row->image) }}" width="45" height="45" class="rounded border shadow-sm" style="cursor:pointer" onclick="window.open(this.src)">

@@ -91,6 +91,8 @@ class FinanceAuditService
             ->merge($missing('repair_payments', 'RepairPayment', ['repair_receipt', 'repair_refund'], 'Repair payment', 'id'))
             ->merge($missing('repair_jobs', 'RepairJob', ['repair_invoice'], 'Repair invoice', 'job_no', fn ($q) => $q->where('total', '>', 0)))
             ->merge($missing('repair_job_parts', 'RepairJobPart', ['repair_part'], 'Repair part', 'id', fn ($q) => $q->whereIn('status', ['approved', 'returned'])->where('unit_cost', '>', 0)))
+            ->merge($missing('commission_statements', 'CommissionStatement', ['commission_accrual'], 'Commission statement', 'statement_no', fn ($q) => $q->whereIn('status', ['approved', 'paid'])))
+            ->merge($missing('commission_statements', 'CommissionStatement', ['commission_payment'], 'Commission payment', 'statement_no', fn ($q) => $q->where('status', 'paid')))
             ->all();
 
         return ['severity' => 'warning', 'title' => 'Documents not posted to the journal (run finance:backfill)', 'rows' => $rows];

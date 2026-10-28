@@ -49,7 +49,7 @@
                             <thead class="text-center bg-light">
                                 <tr>
                                     <th>SL</th>
-                                    @if(auth()->user()->role == 'admin')
+                                    @if(auth()->user()->isAdmin() || auth()->user()->can('read staff'))
                                         <th>Staff Name</th>
                                     @endif
                                     <th>In/Out Photo</th>
@@ -66,7 +66,7 @@
                                 <tr>
                                     <td class="text-center">{{ $key + 1 }}</td>
                                     
-                                    @if(auth()->user()->role == 'admin')
+                                    @if(auth()->user()->isAdmin() || auth()->user()->can('read staff'))
                                         <td><strong>{{ $row->user->name ?? 'N/A' }}</strong></td>
                                     @endif
 
@@ -114,7 +114,7 @@
                             <tfoot>
     <tr class="bg-light font-weight-bold text-center">
         {{-- কলাম সংখ্যা অনুযায়ী কলস্প্যান অ্যাডজাস্ট করা হয়েছে --}}
-        <td colspan="{{ auth()->user()->role == 'admin' ? 4 : 3 }}" class="text-right">Total Summary:</td>
+        <td colspan="{{ (auth()->user()->isAdmin() || auth()->user()->can('read staff')) ? 4 : 3 }}" class="text-right">Total Summary:</td>
         
         <td>
             {{-- মোট কতদিন উপস্থিত ছিল --}}

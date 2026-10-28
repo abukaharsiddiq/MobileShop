@@ -115,6 +115,11 @@ class PermissionSeeder extends Seeder
             ['approve transfer', 'Stock Transfer'],   // approve/reject (source branch), missing dhora
             ['process transfer', 'Stock Transfer'],   // dispatch (source branch), receive (destination branch)
             ['read branch report', 'Report'],         // branch onujayi purchase, sales, expense, labh
+            ['read staff', 'Staff'],                  // nijer branch er staff list, profile (sensitive chara), performance, attendance
+            ['manage staff', 'Staff'],                // profile edit + sensitive (salary, NID, payment account)
+            ['read commission', 'Commission'],        // nijer commission statement
+            ['manage commission', 'Commission'],      // niyom, target, statement toiri (nijer branch er staff)
+            ['approve commission', 'Commission'],     // statement approve ar payment
         ]);
     }
 }

@@ -16,15 +16,10 @@ class AttendanceController extends Controller
     $name = "Today's Attendance List";
     $today = Carbon::now('Asia/Dhaka')->format('Y-m-d');
 
-    $query = Attendance::with('user')->where('date', $today);
-
-    if (auth()->user()->role == 'admin') { 
-        $attendances = $query->orderBy('id', 'desc')->get();
-    } else {
-        $attendances = $query->where('user_id', auth()->id())
-                             ->orderBy('id', 'desc')
-                             ->get();
-    }
+    // admin shob; 'read staff' nijer branch er staff; baki ra shudhu nijer
+    $attendances = Attendance::with('user')->where('date', $today)
+        ->whereIn('user_id', $this->visibleUserIds())
+        ->orderBy('id', 'desc')->get();
                         
     return view('back-end.attendance.index', compact('attendances', 'name', 'title'));
 }
@@ -38,19 +33,25 @@ public function monthly(Request $request) {
     $month = $request->month ?? date('n');
     $year = $request->year ?? date('Y');
 
-    $query = Attendance::with('user')
+    $attendances = Attendance::with('user')
                 ->whereMonth('date', $month)
-                ->whereYear('date', $year);
-
-    if (auth()->user()->role == 'admin') { 
-        $attendances = $query->orderBy('date', 'asc')->get();
-    } else {
-        $attendances = $query->where('user_id', auth()->id())
-                             ->orderBy('date', 'asc')->get();
-    }
+                ->whereYear('date', $year)
+                ->whereIn('user_id', $this->visibleUserIds())
+                ->orderBy('date', 'asc')->get();
                         
     return view('back-end.attendance.monthly', compact('attendances', 'name', 'title'));
 }
+
+    // je der attendance dekhte pare: admin shob; 'read staff' nijer branch er staff; baki ra nije
+    private function visibleUserIds(): array
+    {
+        $user = auth()->user();
+        if ($user->isAdmin()) {
+            return \App\Models\User::pluck('id')->all();
+        }
+
+        return app(\App\Services\StaffService::class)->visibleStaff($user)->pluck('id')->push($user->id)->unique()->all();
+    }
 
     // public function store(Request $request) {
 
