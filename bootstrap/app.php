@@ -11,6 +11,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // provider er webhook (signature diye jachai) - CSRF token thake na
+        $middleware->validateCsrfTokens(except: ['webhooks/*']);
         $middleware->alias([
          'role' => \App\Http\Middleware\RoleMiddleware::class,
           'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,

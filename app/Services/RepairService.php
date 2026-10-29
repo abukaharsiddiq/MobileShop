@@ -129,6 +129,7 @@ class RepairService
                     $data['payment_reference'] ?? null, ($data['account_id'] ?? null) ? (int) $data['account_id'] : null);
             }
             AuditLogger::log('repair.opened', $job, null, $job->only(['job_no', 'customer_id', 'device_model', 'imei_no', 'ownership', 'estimated_cost']));
+            $this->notifyCustomer($job, 'repair_received');
 
             return $job->refresh();
         });
@@ -286,6 +287,7 @@ class RepairService
                 $job->update(['status' => RepairJob::QC_PASSED, 'qc_by' => $user->id, 'qc_at' => now(), 'qc_note' => $note]
                     + ($serviceCharge !== null ? ['service_charge' => $this->money($serviceCharge, 'Service charge')] : []));
                 $this->event($job, RepairJob::QC_PASSED, $user, $note . ($serviceCharge !== null ? ' (service charge ' . number_format((float) $job->service_charge, 2) . ')' : ''));
+                $this->notifyCustomer($job, 'repair_ready');
             } else {
                 $job->update(['status' => RepairJob::IN_REPAIR, 'qc_note' => $note, 'completed_at' => null]);
                 $this->event($job, 'qc_failed', $user, $note);
@@ -475,6 +477,7 @@ class RepairService
             $this->event($job, RepairJob::DELIVERED, $user, 'Bill ' . number_format($total, 2) . ', due ' . number_format(max(0, $job->fresh()->due()), 2)
                 . ($days ? ", warranty {$days} days" : ', no warranty') . ($job->collected_by ? ", collected by {$job->collected_by}" : ''));
             AuditLogger::log('repair.delivered', $job, null, $job->only(['job_no', 'total', 'paid_amount', 'warranty_until']));
+            $this->notifyCustomer($job->refresh(), 'repair_delivered');
 
             return $job->refresh();
         });
@@ -726,6 +729,15 @@ class RepairService
         $this->event($job, 'payment', $user, RepairPayment::LABELS[$type] . ' ' . number_format($amount, 2) . " ({$method})");
 
         return $payment;
+    }
+
+    // customer ke repair er khobor (protiti dhap e ekbar)
+    private function notifyCustomer(RepairJob $job, string $event): void
+    {
+        app(NotificationService::class)->notify($event, Customer::find($job->customer_id), $job, [
+            'job_no' => $job->job_no, 'device' => $job->device_model, 'total' => number_format($job->billTotal(), 2),
+            'due' => number_format(max(0, $job->due()), 2), 'warranty_until' => $job->warranty_until?->format('d M Y') ?? 'none',
+        ]);
     }
 
     private function money(float $amount, string $label): float

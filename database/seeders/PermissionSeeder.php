@@ -120,6 +120,8 @@ class PermissionSeeder extends Seeder
             ['read commission', 'Commission'],        // nijer commission statement
             ['manage commission', 'Commission'],      // niyom, target, statement toiri (nijer branch er staff)
             ['approve commission', 'Commission'],     // statement approve ar payment
+            ['read notifications', 'Notifications'],  // SMS/WhatsApp itihash
+            ['manage notifications', 'Notifications'], // provider, credential, template, abar pathano
         ]);
     }
 }

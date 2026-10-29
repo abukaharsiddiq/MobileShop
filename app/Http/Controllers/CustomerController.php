@@ -173,10 +173,10 @@ public function update(Request $request, $id)
     DB::beginTransaction();
     try {
         $this->accounts->assertNewPhone($request->phone, $request->alt_phone, $customer->id);
-        $old = $customer->only(self::PROFILE);
+        $old = $customer->only([...self::PROFILE, 'notify_sms', 'notify_whatsapp']);
         $customer->update($this->profile($request));
         if ($customer->wasChanged()) {
-            AuditLogger::log('customer.updated', $customer, $old, $customer->only(self::PROFILE));
+            AuditLogger::log('customer.updated', $customer, $old, $customer->only([...self::PROFILE, 'notify_sms', 'notify_whatsapp']));
         }
         if ($openingChanged) {
             $this->accounts->changeOpeningBalance($customer, $opening, $request->opening_reason);
@@ -214,7 +214,7 @@ public function delete($id)
         $this->accounts->assertDeletable($customer);
 
         CustomerLedger::where('customer_id', $id)->delete(); // shudhu shunno taka r opening line
-        AuditLogger::log('customer.deleted', $customer, $customer->only(self::PROFILE), null);
+        AuditLogger::log('customer.deleted', $customer, $customer->only([...self::PROFILE, 'notify_sms', 'notify_whatsapp']), null);
         $customer->delete();
         DB::commit();
     } catch (\Exception $e) {
@@ -403,7 +403,11 @@ private function rules(?int $ignoreId = null): array
 
 private function profile(Request $request): array
 {
-    return array_merge($request->only(self::PROFILE), ['customer_type' => $request->customer_type ?: 'retail']);
+    // shommoti shudhu customer form theke (checkbox chara form - jemon POS - ager man bodlay na)
+    $consent = $request->boolean('consent_form')
+        ? ['notify_sms' => $request->boolean('notify_sms'), 'notify_whatsapp' => $request->boolean('notify_whatsapp')] : [];
+
+    return array_merge($request->only(self::PROFILE), ['customer_type' => $request->customer_type ?: 'retail'], $consent);
 }
 
 // form: Due = customer dhare (+), Advance = customer er agrim (-)

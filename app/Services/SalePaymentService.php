@@ -146,6 +146,12 @@ class SalePaymentService
 
         $this->allocateToInstallments($sale, $amount, $date, $method, $startInstallmentId, $payment);
 
+        // taka pelam - customer ke khobor (ei payment e ekbar)
+        app(NotificationService::class)->notify('payment_received', $sale->customer()->first(), $payment, [
+            'invoice' => $sale->invoice_no, 'amount' => number_format($amount, 2), 'due' => number_format((float) $sale->due_amount, 2),
+            'date' => Carbon::parse($date)->format('d M Y'), 'method' => $method,
+        ]);
+
         return $payment->setRelation('sale', $sale);
     }
 

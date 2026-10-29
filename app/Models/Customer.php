@@ -24,7 +24,14 @@ class Customer extends Model
         'opening_balance',
         'status',
         'created_by',
+        'notify_sms',        // lenden er SMS (shommoti)
+        'notify_whatsapp',   // WhatsApp - customer raji hole
     ];
+
+    protected function casts(): array
+    {
+        return ['notify_sms' => 'boolean', 'notify_whatsapp' => 'boolean'];
+    }
 
     protected static function booted(): void
     {

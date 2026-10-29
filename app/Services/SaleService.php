@@ -275,6 +275,12 @@ class SaleService
         }
         AuditLogger::log('sale.created', $sale, null, $sale->only(['invoice_no', 'customer_id', 'grand_total', 'paid_amount', 'branch_id', 'salesperson_id']));
 
+        // customer ke SMS/WhatsApp (commit er por queue e; ekoi sale e ekbar)
+        app(NotificationService::class)->notify('sale_confirmation', $customer, $sale, [
+            'invoice' => $sale->invoice_no, 'total' => number_format((float) $sale->grand_total, 2), 'paid' => number_format((float) $sale->paid_amount, 2),
+            'due' => number_format((float) $sale->due_amount, 2), 'date' => Carbon::parse($sale->sale_date)->format('d M Y'),
+        ]);
+
         return $sale;
     }
 
