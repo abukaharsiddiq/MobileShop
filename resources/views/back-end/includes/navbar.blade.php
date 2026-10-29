@@ -686,6 +686,27 @@
         @endif
        <!--  ======== Warranty ========= -->
 
+       <!--  ======== SMS & WhatsApp ========= -->
+        @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read notifications', 'manage notifications']))
+            <li class="nav-item {{ request()->routeIs('notifications.*') ? 'menu-open' : '' }}">
+                <a href="#" class="nav-link {{ request()->routeIs('notifications.*') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-sms"></i>
+                    <p>SMS & WhatsApp <i class="fas fa-angle-left right"></i></p>
+                </a>
+                <ul class="nav nav-treeview">
+                    <li class="nav-item"><a href="{{ route('notifications.index') }}" class="nav-link {{ request()->routeIs('notifications.index') ? 'active' : '' }}">
+                        <i class="far fa-circle nav-icon"></i><p>Message History</p></a></li>
+                    @if($user->role == 'admin' || auth()->user()->can('manage notifications'))
+                        <li class="nav-item"><a href="{{ route('notifications.templates') }}" class="nav-link {{ request()->routeIs('notifications.templates') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Templates</p></a></li>
+                        <li class="nav-item"><a href="{{ route('notifications.providers') }}" class="nav-link {{ request()->routeIs('notifications.providers') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Providers</p></a></li>
+                    @endif
+                </ul>
+            </li>
+        @endif
+       <!--  ======== SMS & WhatsApp ========= -->
+
        <!--  ======== Staff & Commission ========= -->
         @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read staff', 'read commission', 'manage commission', 'approve commission']))
             <li class="nav-item {{ request()->routeIs('staff.*', 'commission.*', 'salesman.*') ? 'menu-open' : '' }}">

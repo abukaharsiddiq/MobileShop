@@ -35,6 +35,8 @@ use App\Http\Controllers\BranchReportController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\AnalyticsReportController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\WhatsAppWebhookController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -76,6 +78,10 @@ require __DIR__.'/auth.php';
 | Password bodlale ba inactive korle onno device er session UserSessions diye bondho hoy.
 | Notun route e obossoi role:/can:/permission: dite hobe (RouteAuthorizationTest eta check kore).
 */
+// WhatsApp (Meta) webhook: login chara, signature/verify token diye jachai (controller), CSRF bad (bootstrap/app.php)
+Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])->name('webhooks.whatsapp')->middleware('throttle:60,1');
+Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])->name('webhooks.whatsapp.receive')->middleware('throttle:120,1');
+
 Route::middleware(['auth'])->group(function () {
 
     Route::prefix('admin')->name('admin.')->group(function () {
@@ -602,6 +608,21 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/statements/pay/{id}', [CommissionController::class, 'pay'])->name('statements.pay')->middleware('can:approve commission');
     });
     /* staff & commission */
+
+    /* SMS & WhatsApp: itihash (read), provider/template/abar pathano (manage) */
+    Route::prefix('notifications')->name('notifications.')->group(function () {
+        Route::get('/', [NotificationController::class, 'index'])->name('index')->middleware('permission:read notifications|manage notifications');
+        Route::post('/retry/{id}', [NotificationController::class, 'retry'])->name('retry')->middleware('can:manage notifications');
+        Route::post('/retry-failed', [NotificationController::class, 'retryFailed'])->name('retry-failed')->middleware('can:manage notifications');
+        Route::post('/channels/{channel}', [NotificationController::class, 'toggleChannel'])->name('channels.toggle')->middleware('can:manage notifications');
+        Route::get('/providers', [NotificationController::class, 'providers'])->name('providers')->middleware('can:manage notifications');
+        Route::post('/providers', [NotificationController::class, 'storeProvider'])->name('providers.store')->middleware('can:manage notifications');
+        Route::post('/providers/{id}', [NotificationController::class, 'updateProvider'])->name('providers.update')->middleware('can:manage notifications');
+        Route::post('/providers/{id}/toggle', [NotificationController::class, 'toggleProvider'])->name('providers.toggle')->middleware('can:manage notifications');
+        Route::post('/providers/{id}/test', [NotificationController::class, 'testProvider'])->name('providers.test')->middleware('can:manage notifications');
+        Route::get('/templates', [NotificationController::class, 'templates'])->name('templates')->middleware('can:manage notifications');
+        Route::post('/templates/{id}', [NotificationController::class, 'updateTemplate'])->name('templates.update')->middleware('can:manage notifications');
+    });
 
     /* branch report: purchase/sales/expense/labh (read branch report), branch-wise stock (read stock report) - nijer branch */
     Route::get('/branch-report', [BranchReportController::class, 'summary'])->name('branch-report.summary')->middleware('can:read branch report');

@@ -47,6 +47,7 @@ return [
             'read repair', 'create repair', 'approve repair',
             'read transfer', 'create transfer', 'approve transfer', 'process transfer', 'read branch report',
             'read staff', 'read commission', 'manage commission',
+            'read notifications',
         ],
     ],
 

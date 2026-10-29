@@ -460,3 +460,16 @@ Artisan::command('warranty:expiring {--days= : Days ahead (default config warran
     }
     $this->info($rows->count() . ' warranty(ies) expiring soon.');
 })->purpose('List warranties that expire soon (for reminders)');
+
+// SMS/WhatsApp reminder: kisti due/overdue ar warranty shesh (bar bar chalano nirapod - ekoi dhap e duibar na)
+Artisan::command('notifications:reminders', function (App\Services\ReminderService $reminders) {
+    if (!App\Models\NotificationChannel::enabled()) {
+        $this->info('SMS & WhatsApp are turned off - nothing to send.');
+
+        return;
+    }
+    $this->info('Installment reminders: ' . $reminders->installments());
+    $this->info('Warranty reminders: ' . $reminders->warranties());
+})->purpose('Queue SMS/WhatsApp reminders for due installments and expiring warranties');
+
+Illuminate\Support\Facades\Schedule::command('notifications:reminders')->dailyAt('10:00')->withoutOverlapping();

@@ -55,6 +55,15 @@
 </div>
 
 <div class="form-group row">
+  <label class="col-sm-3 text-end control-label col-form-label">Messages</label>
+  <div class="col-sm-9 pt-2">
+    <input type="hidden" name="consent_form" value="1">
+    <label class="mr-3 font-weight-normal"><input type="checkbox" name="notify_sms" value="1" @checked(old('notify_sms', $customer->notify_sms ?? true))> SMS (receipts, payments, reminders)</label>
+    <label class="font-weight-normal"><input type="checkbox" name="notify_whatsapp" value="1" @checked(old('notify_whatsapp', $customer->notify_whatsapp ?? false))> WhatsApp (only if the customer agreed)</label>
+  </div>
+</div>
+
+<div class="form-group row">
   <label for="note" class="col-sm-3 text-end control-label col-form-label">Note</label>
   <div class="col-sm-9"><textarea name="note" id="note" class="form-control" rows="2" maxlength="2000">{{ $field('note') }}</textarea></div>
 </div>
