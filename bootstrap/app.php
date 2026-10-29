@@ -33,4 +33,21 @@ return Application::configure(basePath: dirname(__DIR__))
             'new_password',
             'confirm_password',
         ]);
+
+        // Laravel er log er pashapashi error ta monitoring e (gopon tottho chara, ekoi error ekotro)
+        $exceptions->report(function (\Throwable $e) {
+            app(\App\Services\Monitoring\ErrorRecorder::class)->record($e);
+        });
+
+        // permission chara dhokar chesta (403) audit log e
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e, \Illuminate\Http\Request $request) {
+            if ($e->getStatusCode() === 403 && $request->user()) {
+                try {
+                    \App\Services\AuditLogger::log('security.access_denied', null, null, ['route' => $request->route()?->getName(), 'method' => $request->method()]);
+                } catch (\Throwable) {
+                }
+            }
+
+            return null;
+        });
     })->create();

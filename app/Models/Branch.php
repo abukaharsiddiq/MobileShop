@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Branch extends Model
 {
+    use Concerns\Audited;   // create/update/delete audit log e
+
     const BRANCH = 'branch';
     const WAREHOUSE = 'warehouse';
     const TRANSIT = 'transit';

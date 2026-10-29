@@ -597,3 +597,9 @@ img.menuImage { width: 16px; height: 16px; margin-right: .4rem; opacity: .85; }
   .table thead th { background: #f1f5f9 !important; color: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .main-header, .main-sidebar, .main-footer, .theme-toggle { display: none !important; }
 }
+
+/* chhoto lekha (hint, bornona) - Bangla porte subidha: purno size */
+.small, small {
+  font-size: 100%;
+  font-weight: 400;
+}

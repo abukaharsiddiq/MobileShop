@@ -473,3 +473,131 @@ Artisan::command('notifications:reminders', function (App\Services\ReminderServi
 })->purpose('Queue SMS/WhatsApp reminders for due installments and expiring warranties');
 
 Illuminate\Support\Facades\Schedule::command('notifications:reminders')->dailyAt('10:00')->withoutOverlapping();
+
+// ---- Audit, Backup & Monitoring ---------------------------------------------------------------
+
+Artisan::command('audit:seal', function (App\Services\AuditChain $chain) {
+    $this->info('Sealed ' . $chain->seal() . ' audit log entr(ies).');
+})->purpose('Add new audit log entries to the tamper-evident hash chain');
+
+Artisan::command('audit:verify', function (App\Services\AuditChain $chain) {
+    $result = $chain->verify();
+    if ($result['ok']) {
+        $this->info("Audit log intact: {$result['checked']} entries checked.");
+
+        return 0;
+    }
+    $this->error('Audit log was changed or entries were deleted:');
+    foreach ($result['problems'] as $problem) {
+        $this->line(' - ' . $problem);
+    }
+
+    return 1;
+})->purpose('Verify that no audit log entry was changed or deleted');
+
+Artisan::command('monitor:check', function (App\Services\Monitoring\MonitoringService $monitoring) {
+    $sent = $monitoring->run();
+    foreach ($monitoring->checks() as $check) {
+        $this->line(str_pad(strtoupper($check['status']), 9) . $check['title'] . ': ' . $check['message']);
+    }
+    $this->info("Alerts sent: {$sent}");
+})->purpose('Run health checks and send alerts for critical failures');
+
+Artisan::command('monitor:integrity', function (App\Services\Monitoring\MonitoringService $monitoring) {
+    $result = $monitoring->integrity();
+    $this->info("Finance issues: {$result['finance']}, stock issues: {$result['inventory']}");
+
+    return $result['finance'] + $result['inventory'] ? 1 : 0;
+})->purpose('Run the finance and inventory audits and record the result for monitoring');
+
+Artisan::command('backup:key', function () {
+    $this->line(App\Services\Backup\BackupCrypto::generateKey());
+    $this->warn('Put this in .env as BACKUP_ENCRYPTION_KEY=... and store a copy OUTSIDE this server (password manager).');
+    $this->warn('Without the key, encrypted backups cannot be restored. Never commit it to the repository.');
+})->purpose('Generate a backup encryption key');
+
+Artisan::command('backup:run {--note= : optional note}', function (App\Services\BackupService $backups) {
+    $backup = $backups->run('manual', null, $this->option('note'));
+    if ($backup->status !== App\Models\Backup::COMPLETED) {
+        $this->error('Backup failed: ' . $backup->error);
+
+        return 1;
+    }
+    $this->info("Backup #{$backup->id} {$backup->filename} ({$backup->sizeLabel()}, {$backup->table_count} tables, sha256 {$backup->sha256})");
+
+    return 0;
+})->purpose('Take a database backup now (compressed, checksummed, encrypted if a key is set)');
+
+Artisan::command('backup:scheduled', function (App\Services\BackupService $backups) {
+    $backup = $backups->runScheduled();
+    if ($backup) {
+        $this->line("Automatic backup #{$backup->id}: {$backup->status}" . ($backup->error ? " - {$backup->error}" : ''));
+    }
+
+    return $backup && $backup->status !== App\Models\Backup::COMPLETED ? 1 : 0;
+})->purpose('Take the automatic backup when it is due (settings on the Backups page)');
+
+Artisan::command('backup:list', function () {
+    $rows = App\Models\Backup::orderByDesc('id')->limit(30)->get()->map(fn ($b) => [$b->id, ($b->completed_at ?? $b->started_at)?->format('Y-m-d H:i'), $b->status,
+        $b->typeLabel(), $b->size ? $b->sizeLabel() : '', $b->encrypted ? 'yes' : 'no', $b->verify_status ?? '-', $b->note ?? $b->filename]);
+    $this->table(['ID', 'Time', 'Status', 'Type', 'Size', 'Encrypted', 'Check', 'Note / file'], $rows);
+})->purpose('List database backups');
+
+Artisan::command('backup:verify {id? : backup ID (default: latest)}', function (App\Services\BackupService $backups) {
+    $backup = $this->argument('id')
+        ? App\Models\Backup::findOrFail($this->argument('id'))
+        : App\Models\Backup::where('status', App\Models\Backup::COMPLETED)->latest('completed_at')->first();
+    if (!$backup) {
+        $this->error('No backup to check.');
+
+        return 1;
+    }
+    $result = $backups->verify($backup);
+    $this->line("Backup #{$backup->id}: " . strtoupper($result['status']));
+    foreach ($result['notes'] as $note) {
+        $this->line(' - ' . $note);
+    }
+
+    return $result['status'] === 'failed' ? 1 : 0;
+})->purpose('Check a backup: checksum, allowed statements, and a test restore into a separate database');
+
+Artisan::command('backup:import {file : a .sql, .sql.gz or encrypted backup file (e.g. from offsite storage)}', function (App\Services\BackupService $backups) {
+    try {
+        $backup = $backups->import($this->argument('file'));
+    } catch (\RuntimeException $e) {
+        $this->error($e->getMessage());
+
+        return 1;
+    }
+    $this->info("Added as backup #{$backup->id}. Check it with: php artisan backup:verify {$backup->id}");
+
+    return 0;
+})->purpose('Add a backup file to the list (it is checked first; nothing is restored)');
+
+Artisan::command('backup:restore {id : backup ID}', function (App\Services\BackupService $backups) {
+    $backup = App\Models\Backup::findOrFail($this->argument('id'));
+    $this->warn("This REPLACES the current data with backup #{$backup->id} from {$backup->completed_at}. A \"before restore\" backup is taken first.");
+    if ($this->ask('Type RESTORE to continue') !== 'RESTORE') {
+        $this->error('Cancelled.');
+
+        return 1;
+    }
+    try {
+        $result = $backups->restore($backup);
+    } catch (\RuntimeException $e) {
+        $this->error($e->getMessage());
+
+        return 1;
+    }
+    $this->info("Restored {$result['tables']} tables. The previous data is in backup #{$result['safety']->id}.");
+    $this->line('Then run: php artisan finance:audit, php artisan inventory:audit');
+
+    return 0;
+})->purpose('Restore a backup into the live database (takes a "before restore" backup first)');
+
+Illuminate\Support\Facades\Schedule::command('audit:seal')->everyMinute()->withoutOverlapping();
+Illuminate\Support\Facades\Schedule::command('monitor:check')->everyFiveMinutes()->withoutOverlapping();
+Illuminate\Support\Facades\Schedule::command('backup:scheduled')->everyMinute()->withoutOverlapping(120);
+Illuminate\Support\Facades\Schedule::command('backup:verify')->weeklyOn(0, '03:00')->withoutOverlapping(120);
+Illuminate\Support\Facades\Schedule::command('audit:verify')->dailyAt('03:30')->withoutOverlapping();
+Illuminate\Support\Facades\Schedule::command('monitor:integrity')->dailyAt('04:00')->withoutOverlapping();

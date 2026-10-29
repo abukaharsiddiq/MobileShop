@@ -466,7 +466,8 @@ class ImeiInventoryTest extends TestCase
         $this->actingAs($this->admin)->post(route('stock-reconciliation.approve', $adjustment->id))
             ->assertSessionHas('error', fn ($e) => str_contains($e, 'already rejected'));
         $this->assertSame(['stock_adjustment.requested', 'stock_adjustment.rejected'],
-            AuditLog::orderBy('id')->pluck('action')->all());
+            AuditLog::where('action', 'like', 'stock_adjustment.%')->orderBy('id')->pluck('action')->all());
+        $this->assertDatabaseHas('audit_logs', ['action' => 'security.access_denied']);   // permission chara chesta o lekha
     }
 
     public function test_approval_rechecks_state_that_changed_while_pending(): void

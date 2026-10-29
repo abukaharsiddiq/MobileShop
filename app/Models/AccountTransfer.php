@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class AccountTransfer extends Model
 {
+    use Concerns\Audited;   // create/update/delete audit log e
+
     protected $fillable = [
         'transfer_no', 'transfer_date', 'from_account_id', 'to_account_id', 'amount', 'reference', 'note',
         'request_token', 'status', 'journal_entry_id', 'created_by', 'reversed_at', 'reverse_reason',

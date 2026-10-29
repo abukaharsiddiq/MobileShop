@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class ExpenseCategory extends Model
 {
+    use Concerns\Audited;   // create/update/delete audit log e
+
     protected $fillable = ['name', 'account_id', 'status'];
 
     public function account()

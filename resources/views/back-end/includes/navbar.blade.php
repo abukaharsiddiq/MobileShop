@@ -707,6 +707,31 @@
         @endif
        <!--  ======== SMS & WhatsApp ========= -->
 
+       <!--  ======== Audit & Monitoring ========= -->
+        @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read audit log', 'read monitoring', 'manage monitoring', 'manage backups']))
+            <li class="nav-item {{ request()->routeIs('audit.*', 'monitoring.*', 'backups.*') ? 'menu-open' : '' }}">
+                <a href="#" class="nav-link {{ request()->routeIs('audit.*', 'monitoring.*', 'backups.*') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-shield-alt"></i>
+                    <p>Audit & Monitoring <i class="fas fa-angle-left right"></i></p>
+                </a>
+                <ul class="nav nav-treeview">
+                    @if($user->role == 'admin' || auth()->user()->can('read audit log'))
+                        <li class="nav-item"><a href="{{ route('audit.index') }}" class="nav-link {{ request()->routeIs('audit.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Audit Log</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read monitoring', 'manage monitoring']))
+                        <li class="nav-item"><a href="{{ route('monitoring.index') }}" class="nav-link {{ request()->routeIs('monitoring.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>System Monitoring</p></a></li>
+                    @endif
+                    @if($user->role == 'admin' || auth()->user()->can('manage backups'))
+                        <li class="nav-item"><a href="{{ route('backups.index') }}" class="nav-link {{ request()->routeIs('backups.*') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Backups</p></a></li>
+                    @endif
+                </ul>
+            </li>
+        @endif
+       <!--  ======== Audit & Monitoring ========= -->
+
        <!--  ======== Staff & Commission ========= -->
         @if($user->role == 'admin' || auth()->user()->hasAnyPermission(['read staff', 'read commission', 'manage commission', 'approve commission']))
             <li class="nav-item {{ request()->routeIs('staff.*', 'commission.*', 'salesman.*') ? 'menu-open' : '' }}">

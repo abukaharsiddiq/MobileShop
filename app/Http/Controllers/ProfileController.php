@@ -8,6 +8,7 @@ use App\Models\User;
 use Hash;
 use Brian2694\Toastr\Facades\Toastr;
 use App\Services\UserSessions;
+use App\Services\AuditLogger;
 
 class ProfileController extends Controller
 {
@@ -29,6 +30,7 @@ class ProfileController extends Controller
         $user = Auth::user();
         $user->password = Hash::make($request->new_password);
         $user->save();
+        AuditLogger::log('auth.password_changed', $user);
 
         // notun session id, ar onno device e thaka login bondho
         $request->session()->regenerate();

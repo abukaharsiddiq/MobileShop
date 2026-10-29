@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Setting extends Model
 {
+    use Concerns\Audited;   // create/update/delete audit log e
+
     use HasFactory;
 
     protected $fillable = [
