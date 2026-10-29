@@ -59,6 +59,9 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\StockReconciliationController;
 use App\Http\Controllers\StockCountController;
 use App\Http\Controllers\ImeiController;
+use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\MonitoringController;
+use App\Http\Controllers\BackupController;
 use App\Models\User;
 
 
@@ -622,6 +625,39 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/providers/{id}/test', [NotificationController::class, 'testProvider'])->name('providers.test')->middleware('can:manage notifications');
         Route::get('/templates', [NotificationController::class, 'templates'])->name('templates')->middleware('can:manage notifications');
         Route::post('/templates/{id}', [NotificationController::class, 'updateTemplate'])->name('templates.update')->middleware('can:manage notifications');
+    });
+
+    /* Audit log: shudhu pora (edit/delete er route nei) */
+    Route::prefix('audit-log')->name('audit.')->middleware('can:read audit log')->group(function () {
+        Route::get('/', [AuditLogController::class, 'index'])->name('index');
+        Route::get('/export', [AuditLogController::class, 'export'])->name('export');
+        Route::post('/verify', [AuditLogController::class, 'verify'])->name('verify');
+        Route::get('/history/{type}/{id}', [AuditLogController::class, 'history'])->name('history')->whereNumber('id');
+        Route::get('/{id}', [AuditLogController::class, 'show'])->name('show')->whereNumber('id');
+    });
+
+    /* Monitoring: dekha (read), failed job/error/alert e kaj (manage) */
+    Route::prefix('monitoring')->name('monitoring.')->group(function () {
+        Route::get('/', [MonitoringController::class, 'index'])->name('index')->middleware('permission:read monitoring|manage monitoring');
+        Route::post('/run', [MonitoringController::class, 'run'])->name('run')->middleware('can:manage monitoring');
+        Route::post('/jobs/retry-all', [MonitoringController::class, 'retryAllJobs'])->name('jobs.retry-all')->middleware('can:manage monitoring');
+        Route::post('/jobs/{uuid}/retry', [MonitoringController::class, 'retryJob'])->name('jobs.retry')->middleware('can:manage monitoring');
+        Route::post('/jobs/{uuid}/forget', [MonitoringController::class, 'forgetJob'])->name('jobs.forget')->middleware('can:manage monitoring');
+        Route::post('/errors/{id}/resolve', [MonitoringController::class, 'resolveError'])->name('errors.resolve')->middleware('can:manage monitoring');
+        Route::post('/alerts/{id}/acknowledge', [MonitoringController::class, 'acknowledge'])->name('alerts.acknowledge')->middleware('can:manage monitoring');
+    });
+
+    /* Backup: shudhu manage backups; download/restore e password abar */
+    Route::prefix('backups')->name('backups.')->middleware('can:manage backups')->group(function () {
+        Route::get('/', [BackupController::class, 'index'])->name('index');
+        Route::post('/', [BackupController::class, 'store'])->name('store');
+        Route::post('/schedule', [BackupController::class, 'schedule'])->name('schedule');
+        Route::post('/upload', [BackupController::class, 'upload'])->name('upload');
+        Route::post('/{id}/verify', [BackupController::class, 'verify'])->name('verify');
+        Route::get('/{id}/download', [BackupController::class, 'download'])->name('download')->middleware('password.confirm');
+        Route::get('/{id}/restore', [BackupController::class, 'confirmRestore'])->name('restore.confirm')->middleware('password.confirm');
+        Route::post('/{id}/restore', [BackupController::class, 'restore'])->name('restore')->middleware('password.confirm');
+        Route::post('/{id}/delete', [BackupController::class, 'destroy'])->name('destroy');
     });
 
     /* branch report: purchase/sales/expense/labh (read branch report), branch-wise stock (read stock report) - nijer branch */

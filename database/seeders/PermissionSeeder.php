@@ -122,6 +122,10 @@ class PermissionSeeder extends Seeder
             ['approve commission', 'Commission'],     // statement approve ar payment
             ['read notifications', 'Notifications'],  // SMS/WhatsApp itihash
             ['manage notifications', 'Notifications'], // provider, credential, template, abar pathano
+            ['read audit log', 'Audit'],              // audit log, record er itihash, export (default shudhu admin)
+            ['read monitoring', 'Monitoring'],        // health check, error, failed job, alert dekha
+            ['manage monitoring', 'Monitoring'],      // failed job abar/bad, error somadhan, alert swikar
+            ['manage backups', 'Backup'],             // backup newa, jachai, download (default shudhu admin)
         ]);
     }
 }

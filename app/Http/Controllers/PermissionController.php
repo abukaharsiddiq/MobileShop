@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Spatie\Permission\Models\Permission;
 use Database\Seeders\PermissionSeeder;
 use Brian2694\Toastr\Facades\Toastr;
+use App\Services\AuditLogger;
 
 class PermissionController extends Controller
 {
@@ -40,11 +41,12 @@ class PermissionController extends Controller
             'group_name' => 'required|string'
         ]);
 
-        Permission::create([
+        $permission = Permission::create([
             'name' => $request->name,
             'group_name' => $request->group_name,
             'guard_name' => 'web',
         ]);
+        AuditLogger::log('permission.created', $permission, null, $permission->only(['name', 'group_name']));
 
         Toastr::success('Data Added Successfully', 'Success', ["positionClass" => "toast-top-right"]);
         return redirect()->route('permission.index');
@@ -75,11 +77,13 @@ class PermissionController extends Controller
             'group_name' => 'required|string'
         ]);
 
+        $old = $permission->only(['name', 'group_name']);
         $permission->update([
             'name' => $request->name,
             'group_name' => $request->group_name,
             'guard_name' => 'web'
         ]);
+        AuditLogger::log('permission.updated', $permission, $old, $permission->only(['name', 'group_name']));
 
         Toastr::success('Data Updated Successfully', 'Success', ["positionClass" => "toast-top-right"]);
         return redirect()->route('permission.index');
@@ -95,6 +99,7 @@ class PermissionController extends Controller
             return redirect()->route('permission.index');
         }
 
+        AuditLogger::log('permission.deleted', $permission, $permission->only(['name', 'group_name']), null);
         $permission->delete();
 
         Toastr::success('Data Deleted Successfully', 'Success', ["positionClass" => "toast-top-right"]);
