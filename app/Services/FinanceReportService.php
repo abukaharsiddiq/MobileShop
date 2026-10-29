@@ -60,9 +60,10 @@ class FinanceReportService
         return null;
     }
 
-    public function profitAndLoss(string $from, string $to): array
+    // $branchId: shudhu oi branch er entry (branch chara purono entry default branch er)
+    public function profitAndLoss(string $from, string $to, ?int $branchId = null): array
     {
-        $rows = $this->activity($from, $to, [Account::INCOME, Account::EXPENSE]);
+        $rows = $this->activity($from, $to, [Account::INCOME, Account::EXPENSE], $branchId);
 
         $sections = ['sales' => [], 'sales_discount' => [], 'sales_return' => [], 'other_income' => [], 'cogs' => [], 'expense' => []];
         foreach ($rows as $row) {
@@ -244,11 +245,12 @@ class FinanceReportService
     }
 
     // Account onujayi mot debit/credit (from null = shuru theke)
-    private function activity(?string $from, string $to, ?array $types = null)
+    private function activity(?string $from, string $to, ?array $types = null, ?int $branchId = null)
     {
         return Account::query()
             ->join('journal_lines as l', 'l.account_id', '=', 'accounts.id')
             ->join('journal_entries as e', 'e.id', '=', 'l.journal_entry_id')
+            ->when($branchId, fn ($q) => $q->whereRaw('COALESCE(e.branch_id, ?) = ?', [(int) \App\Models\Branch::where('is_default', 1)->value('id'), $branchId]))
             ->when($from, fn ($q) => $q->where('e.entry_date', '>=', $from))
             ->where('e.entry_date', '<=', $to)
             ->when($types, fn ($q) => $q->whereIn('accounts.type', $types))

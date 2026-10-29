@@ -6,6 +6,7 @@
         <div class="card mb-3 no-print">
             <div class="card-body">
                 <form action="" method="GET" class="row align-items-end">
+                    @include('back-end.reports._branch_select', ['wrap' => 'col-md-3 form-group'])
                     <div class="col-md-4">
                         <label class="font-weight-bold">কত দিনের পুরনো স্টক দেখবেন? (Days)</label>
                         <input type="number" name="days" class="form-control" value="{{ $days }}" placeholder="e.g. 90">

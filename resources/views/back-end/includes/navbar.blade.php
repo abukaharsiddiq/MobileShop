@@ -462,7 +462,7 @@
             </li>
         @endif
 
-        @if($isAdmin || auth()->user()->hasAnyPermission(['read stock report', 'read supplier report', 'read sales report', 'read customer report', 'read expense report']))
+        @if($isAdmin || auth()->user()->hasAnyPermission(['read stock report', 'read supplier report', 'read sales report', 'read customer report', 'read expense report', 'read finance report']))
             <li class="nav-item {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'menu-open' : '' }}">
                 <a href="#" class="nav-link {{ request()->routeIs('reports.*', 'supplier.due.report', 'customer.*') ? 'active' : '' }}">
                     <i class="nav-icon fas fa-chart-pie"></i>
@@ -473,6 +473,30 @@
                 </a>
 
                 <ul class="nav nav-treeview">
+
+                    {{-- shob report ek jaygay + notun report --}}
+                    <li class="nav-item"><a href="{{ route('reports.hub') }}" class="nav-link {{ request()->routeIs('reports.hub') ? 'active' : '' }}">
+                        <i class="fas fa-th-large nav-icon"></i><p>All Reports</p></a></li>
+                    @if($isAdmin || auth()->user()->can('read sales report'))
+                        <li class="nav-item"><a href="{{ route('reports.sales_period') }}" class="nav-link {{ request()->routeIs('reports.sales_period') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Sales by Period</p></a></li>
+                    @endif
+                    @if($isAdmin || auth()->user()->hasAnyPermission(['read supplier report', 'read purchase']))
+                        <li class="nav-item"><a href="{{ route('reports.purchases') }}" class="nav-link {{ request()->routeIs('reports.purchases') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Purchase Report</p></a></li>
+                    @endif
+                    @if($isAdmin || auth()->user()->hasAnyPermission(['read sales report', 'read supplier report']))
+                        <li class="nav-item"><a href="{{ route('reports.returns') }}" class="nav-link {{ request()->routeIs('reports.returns') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Returns Report</p></a></li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read finance report'))
+                        <li class="nav-item"><a href="{{ route('reports.cash_bank') }}" class="nav-link {{ request()->routeIs('reports.cash_bank') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>Cash & Bank Balances</p></a></li>
+                    @endif
+                    @if($isAdmin || auth()->user()->can('read stock report'))
+                        <li class="nav-item"><a href="{{ route('reports.imei_reconciliation') }}" class="nav-link {{ request()->routeIs('reports.imei_reconciliation') ? 'active' : '' }}">
+                            <i class="far fa-circle nav-icon"></i><p>IMEI Reconciliation</p></a></li>
+                    @endif
 
                     {{-- Stock Report --}}
                     @if($isAdmin || auth()->user()->can('read stock report'))

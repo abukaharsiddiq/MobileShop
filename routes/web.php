@@ -34,6 +34,7 @@ use App\Http\Controllers\StockTransferController;
 use App\Http\Controllers\BranchReportController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\CommissionController;
+use App\Http\Controllers\AnalyticsReportController;
 use App\Http\Controllers\AdditionalController;
 use App\Http\Controllers\PurchaseReturnController;
 
@@ -418,6 +419,14 @@ Route::middleware(['auth'])->group(function () {
 
     /* reports */
     Route::prefix('reports')->name('reports.')->group(function () {
+        // shob report ek jaygay; notun: shomoy onujayi bikri, purchase, return, cash/bank, IMEI reconciliation
+        Route::get('/', [AnalyticsReportController::class, 'index'])->name('hub')
+            ->middleware('permission:read sales report|read stock report|read supplier report|read customer report|read expense report|read finance report');
+        Route::get('/sales-period', [AnalyticsReportController::class, 'salesPeriod'])->name('sales_period')->middleware('can:read sales report');
+        Route::get('/purchases', [AnalyticsReportController::class, 'purchases'])->name('purchases')->middleware('permission:read supplier report|read purchase');
+        Route::get('/returns', [AnalyticsReportController::class, 'returns'])->name('returns')->middleware('permission:read sales report|read supplier report');
+        Route::get('/cash-bank', [AnalyticsReportController::class, 'cashBank'])->name('cash_bank')->middleware('can:read finance report');
+        Route::get('/imei-reconciliation', [AnalyticsReportController::class, 'imeiReconciliation'])->name('imei_reconciliation')->middleware('can:read stock report');
         Route::get('/dead-stock', [StockReportController::class, 'DeadStockReport'])->name('dead.stock')->middleware('can:read stock report');
         Route::get('/stock', [StockReportController::class, 'stockReport'])->name('stock')->middleware('can:read stock report');
         // stock ledger (reference shoho), valuation, low stock alert

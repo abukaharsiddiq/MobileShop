@@ -46,6 +46,7 @@ class ExpenseController extends Controller
                 AccountingService::assertNewToken($request->request_token, Expense::class);
 
                 $expense = Expense::create($data + [
+                    'branch_id'     => \App\Models\Branch::currentId(),   // journal entry r ekoi branch
                     'created_by'    => Auth::id(),
                     'request_token' => $request->request_token,
                     'status'        => 'posted',

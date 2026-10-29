@@ -13,6 +13,7 @@ class Expense extends Model
         'amount',
         'payment_method',
         'account_id',
+        'branch_id',
         'note',
         'request_token',
         'status',

@@ -15,6 +15,7 @@
             </div>
             <div class="card-body">
                  <form action="{{ route('reports.invoice.wise.profit') }}" method="GET" class="mb-4 d-print-none">
+                @include('back-end.reports._branch_select')
                     <div class="row align-items-end">
                         <div class="col-md-5">
                             <label>From</label>

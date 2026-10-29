@@ -34,8 +34,11 @@ public function DeadStockReport(Request $request)
     $days = $request->days ?? 30;
     $deadDate = now()->subDays($days)->endOfDay();
 
+    $branchId = $this->branchFilter($request);
+    $default = (int) Branch::where('is_default', 1)->value('id');
     $query = ProductImei::where('status', 1)
-                ->where('created_at', '<=', $deadDate);
+                ->where('created_at', '<=', $deadDate)
+                ->when($branchId, fn ($q) => $q->whereRaw('COALESCE(branch_id, ?) = ?', [$default, $branchId]));
 
     $deadStocks = $query->with('product')->orderBy('created_at', 'asc')->get();
 
