@@ -46,6 +46,7 @@
         </div>
         <div class="card-body">
             <form action="" method="GET">
+                @include('back-end.reports._branch_select')
                 <div class="row align-items-end">
                     <div class="col-md-5">
                         <label class="small font-weight-bold">From Date</label>

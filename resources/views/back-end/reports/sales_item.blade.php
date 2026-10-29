@@ -4,6 +4,7 @@
     <div class="card shadow mb-4 d-print-none">
         <div class="card-body">
             <form action="{{ route('reports.sales_item') }}" method="GET">
+                @include('back-end.reports._branch_select')
                 <div class="row align-items-end">
                     <div class="col-md-4">
                         <label>From Date</label>

@@ -18,6 +18,7 @@
         <div class="card-header bg-light py-1 d-flex justify-content-between align-items-center">
             <h6 class="m-0 font-weight-bold text-primary">Monthly Expense Summary (Year: {{ $year }})</h6>
             <form action="" method="GET" class="form-inline">
+                @include('back-end.reports._branch_select', ['wrap' => 'd-inline-flex align-items-center mr-2'])
                 <select name="year" class="form-control form-control-sm mr-2" onchange="this.form.submit()">
                     @for($i = date('Y'); $i >= (date('Y') - 1); $i--)
                         <option value="{{ $i }}" {{ $year == $i ? 'selected' : '' }}>{{ $i }}</option>

@@ -50,6 +50,7 @@
             </div>
 
             <form action="" method="GET" class="mb-4 no-print">
+                @include('back-end.reports._branch_select')
                 <div class="row">
                     <div class="col-md-4">
                         <label>Start Date</label>

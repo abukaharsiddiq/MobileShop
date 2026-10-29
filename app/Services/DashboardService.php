@@ -91,19 +91,20 @@ class DashboardService
         $range = [$from->toDateString(), $to->toDateString()];
         $sales = Sale::where('status', Sale::STATUS_COMPLETED)->whereBetween('sale_date', $range)->when($branchId, $this->branch($branchId));
 
-        $gross = round((float) (clone $sales)->sum('grand_total'), 2);
+        // ReportService::salesByPeriod er hishab (mile): return e grand_total age-i kome, tai net = grand_total;
+        // return = oi sale gulor completed return, mul bill = net + return (duibar bad na)
+        $net = round((float) (clone $sales)->sum('grand_total'), 2);
         $count = (int) (clone $sales)->count();
-        $returns = round((float) SaleReturn::where('status', SaleReturn::STATUS_COMPLETED)->whereBetween('return_date', $range)
-            ->when($branchId, $this->branch($branchId))->sum('total_refund'), 2);
+        $returns = round((float) SaleReturn::where('status', SaleReturn::STATUS_COMPLETED)
+            ->whereIn('sale_id', (clone $sales)->select('id'))->sum('total_refund'), 2);
 
-        // labh: line (return er por) - kena dam, invoice discount bad
+        // labh: jinish (grand_total - tax - charge) - ekhono bikri thaka qty x kena dam
         $lines = DB::table('sale_details')->join('sales', 'sales.id', '=', 'sale_details.sale_id')
             ->where('sales.status', Sale::STATUS_COMPLETED)->whereBetween('sales.sale_date', $range)
             ->when($branchId, fn ($q) => $q->whereRaw('COALESCE(sales.branch_id, ?) = ?', [$this->defaultBranch(), $branchId]))
-            ->selectRaw('SUM(sale_details.unit_total) as revenue, SUM(sale_details.quantity * sale_details.purchase_price) as cost, SUM(sale_details.quantity) as units')
+            ->selectRaw('SUM(sale_details.quantity * sale_details.purchase_price) as cost, SUM(sale_details.quantity) as units')
             ->first();
-        $discount = (float) (clone $sales)->sum('discount');
-        $goods = round((float) ($lines->revenue ?? 0) - $discount, 2);
+        $goods = round((float) (clone $sales)->sum(DB::raw('grand_total - tax_amount - additional_charge')), 2);
         $profit = round($goods - (float) ($lines->cost ?? 0), 2);
 
         // taka asha (cash/bank/mobile; store credit na) - ferot bad
@@ -120,11 +121,11 @@ class DashboardService
             ->selectRaw('SUM(l.debit - l.credit) as net')->value('net'), 2);
 
         return [
-            'sales'     => $gross,
+            'sales'     => round($net + $returns, 2),   // mul bill (return er age)
             'returns'   => $returns,
-            'net_sales' => round($gross - $returns, 2),
+            'net_sales' => $net,
             'invoices'  => $count,
-            'avg_ticket' => $count ? round($gross / $count, 2) : 0.0,
+            'avg_ticket' => $count ? round($net / $count, 2) : 0.0,
             'units'     => (int) ($lines->units ?? 0),
             'profit'    => $profit,
             'margin'    => $goods > 0 ? round($profit / $goods * 100, 1) : 0.0,

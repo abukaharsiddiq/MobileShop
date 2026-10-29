@@ -7,11 +7,14 @@ use App\Models\Sale;
 use App\Models\SaleDetail;
 use App\Models\Expense;
 use App\Services\FinanceReportService;
+use App\Http\Controllers\Concerns\ReportBranch;
 use DB;
 use Carbon\Carbon;
 
 class ReportController extends Controller
 {
+    use ReportBranch;
+
     public function salesSummary(Request $request)
     {
         $name = 'Sales Summary Report';
@@ -20,8 +23,10 @@ class ReportController extends Controller
         $start_date = $request->start_date ?? date('Y-m-d');
         $end_date = $request->end_date ?? date('Y-m-d');
 
+        $branchId = $this->reportBranch($request);
         $sales = Sale::with('customer')->completed()
                     ->whereBetween('sale_date', [$start_date, $end_date])
+                    ->tap(fn ($q) => $this->whereBranch($q, $branchId, 'sales.branch_id'))
                     ->orderBy('id', 'desc')
                     ->get();
 
@@ -36,13 +41,15 @@ class ReportController extends Controller
         $start_date = $request->start_date ?? date('Y-m-01');
         $end_date = $request->end_date ?? date('Y-m-d');
 
+        $branchId = $this->reportBranch($request);
         $itemSales = SaleDetail::with(['product', 'ram', 'rom','color'])
             ->select('product_id', 'ram_id', 'rom_id','color_id', 
                 DB::raw('SUM(quantity) as total_qty'), 
                 DB::raw('SUM(unit_total) as total_amount'))
-            ->whereHas('sale', function($q) use ($start_date, $end_date) {
+            ->whereHas('sale', function($q) use ($start_date, $end_date, $branchId) {
                 $q->completed();
                 $q->whereBetween('sale_date', [$start_date, $end_date]);
+                $this->whereBranch($q, $branchId, 'sales.branch_id');
             })
             ->groupBy('product_id', 'ram_id', 'rom_id','color_id')
             ->orderBy('total_qty', 'desc') 
@@ -59,7 +66,7 @@ class ReportController extends Controller
 
     // journal theke: return/refund return er tarikhe, discount/tax/purchase return/stock loss shoho, reverse kora expense bad
     [$start_date, $end_date] = $finance->period($request);
-    $report = $finance->profitAndLoss($start_date, $end_date);
+    $report = $finance->profitAndLoss($start_date, $end_date, $this->reportBranch($request));
 
     $totalSales = $report['net_sales'];
     $totalPurchaseCost = $report['cogs'];
@@ -82,8 +89,10 @@ public function expenseByMethod(Request $request)
     $end_date = $request->end_date ?? date('Y-m-d');
 
 
+    $branchId = $this->reportBranch($request);
     $methodData = DB::table('expenses')
         ->where('status', 'posted')   // reverse kora expense bad
+        ->tap(fn ($q) => $this->whereBranch($q, $branchId, 'expenses.branch_id'))
         ->select('payment_method', DB::raw('SUM(amount) as total_spent'), DB::raw('count(*) as total_transactions'))
         ->whereBetween('expense_date', [$start_date, $end_date])
         ->groupBy('payment_method')
@@ -103,9 +112,11 @@ public function customRangeReport(Request $request)
     $start_date = $request->start_date ?? date('Y-m-d', strtotime('-7 days'));
     $end_date = $request->end_date ?? date('Y-m-d');
 
+    $branchId = $this->reportBranch($request);
     $expenses = Expense::with('category')
         ->posted()
         ->whereBetween('expense_date', [$start_date, $end_date])
+        ->tap(fn ($q) => $this->whereBranch($q, $branchId, 'expenses.branch_id'))
         ->orderBy('expense_date', 'asc')
         ->get();
 
@@ -122,10 +133,12 @@ public function productWiseProfit(Request $request)
         $start_date = $request->start_date ? Carbon::parse($request->start_date)->format('Y-m-d') : date('Y-m-d');
         $end_date = $request->end_date ? Carbon::parse($request->end_date)->format('Y-m-d') : date('Y-m-d');
 
+        $branchId = $this->reportBranch($request);
         $reports = SaleDetail::with(['product', 'sale.items', 'ram', 'rom', 'color'])
-            ->whereHas('sale', function($q) use ($start_date, $end_date) {
+            ->whereHas('sale', function($q) use ($start_date, $end_date, $branchId) {
                 $q->completed();
                 $q->whereBetween('sale_date', [$start_date, $end_date]);
+                $this->whereBranch($q, $branchId, 'sales.branch_id');
             })
             ->where('quantity', '>', 0)
             ->latest()
@@ -156,8 +169,10 @@ public function invoiceWiseProfit(Request $request){
     $end_date = $request->end_date ? Carbon::parse($request->end_date)->format('Y-m-d') : date('Y-m-d');
 
     // Sale এর সাথে items লোড করে আনা হচ্ছে
+    $branchId = $this->reportBranch($request);
     $sales = Sale::with(['customer', 'items'])->completed()
         ->whereBetween('sale_date', [$start_date, $end_date])
+        ->tap(fn ($q) => $this->whereBranch($q, $branchId, 'sales.branch_id'))
         ->latest()
         ->get();
 
